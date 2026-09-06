@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "Vue.volar",
+    "Prisma.prisma",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "humao.rest-client"
+  ]
+}

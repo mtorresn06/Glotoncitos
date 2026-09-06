@@ -1,0 +1,123 @@
+// Esquema de base de datos de "Glotoncitos"
+// Modela las entidades derivadas de los RF-01 a RF-20 del primer/segundo adelanto.
+// Ejecutar: npx prisma migrate dev --name init  (crea las tablas en Postgres)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Rol {
+  ADMINISTRADOR
+  MESERO
+  COCINA
+  CAJERO
+}
+
+enum EstadoMesa {
+  LIBRE
+  OCUPADA
+}
+
+enum EstadoPedido {
+  ABIERTO
+  ENVIADO_COCINA
+  CERRADO
+}
+
+enum EstadoPreparacion {
+  PENDIENTE
+  EN_PREPARACION
+  LISTO
+}
+
+// RF-01, RF-02, RF-20: autenticación, gestión de usuarios y acceso por rol
+model Usuario {
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  email        String   @unique
+  passwordHash String
+  rol          Rol
+  activo       Boolean  @default(true)
+  creadoEn     DateTime @default(now())
+
+  pedidos Pedido[] @relation("MeseroPedidos")
+  ventas  Venta[]
+
+  @@map("usuarios")
+}
+
+// RF-04, RF-05, RF-06, RF-07: configuración y estado del mapa de mesas
+model Mesa {
+  id           Int        @id @default(autoincrement())
+  numero       Int        @unique
+  piso         Int        @default(1)
+  estado       EstadoMesa @default(LIBRE)
+  ocupadaDesde DateTime?
+
+  pedidos Pedido[]
+
+  @@map("mesas")
+}
+
+// RF-03: gestión básica del menú
+model Producto {
+  id       Int      @id @default(autoincrement())
+  nombre   String
+  precio   Decimal  @db.Decimal(10, 2)
+  categoria String  @default("General")
+  activo   Boolean  @default(true)
+
+  detalles DetallePedido[]
+
+  @@map("productos")
+}
+
+// RF-08, RF-09, RF-10, RF-11: registro y modificación de pedidos
+model Pedido {
+  id        Int          @id @default(autoincrement())
+  mesa      Mesa         @relation(fields: [mesaId], references: [id])
+  mesaId    Int
+  mesero    Usuario      @relation("MeseroPedidos", fields: [meseroId], references: [id])
+  meseroId  Int
+  estado    EstadoPedido @default(ABIERTO)
+  creadoEn  DateTime     @default(now())
+
+  detalles DetallePedido[]
+  venta    Venta?
+
+  @@map("pedidos")
+}
+
+// RF-09, RF-11, RF-12, RF-13, RF-14: productos del pedido, notas para cocina y su estado
+model DetallePedido {
+  id                Int               @id @default(autoincrement())
+  pedido            Pedido            @relation(fields: [pedidoId], references: [id])
+  pedidoId          Int
+  producto          Producto          @relation(fields: [productoId], references: [id])
+  productoId        Int
+  cantidad          Int               @default(1)
+  observaciones     String?
+  estadoPreparacion EstadoPreparacion @default(PENDIENTE)
+
+  @@map("detalles_pedido")
+}
+
+// RF-15, RF-16, RF-17, RF-18: consulta de cuenta, pago y cierre
+model Venta {
+  id        Int      @id @default(autoincrement())
+  pedido    Pedido   @relation(fields: [pedidoId], references: [id])
+  pedidoId  Int      @unique
+  cajero    Usuario  @relation(fields: [cajeroId], references: [id])
+  cajeroId  Int
+  total     Decimal  @db.Decimal(10, 2)
+  medioPago String
+  fecha     DateTime @default(now())
+
+  @@map("ventas")
+}
