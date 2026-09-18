@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --color-crema-50: #fffbf5;
+  --color-crema-100: #fff4e6;
+  --color-crema-200: #fde9d1;
+  --color-crema-300: #f8dab6;
+  --color-durazno-100: #ffe1c4;
+  --color-durazno-200: #ffcc9e;
+  --color-durazno-300: #f7b178;
+  --color-durazno-400: #ec9457;
+  --color-durazno-500: #d97f3f;
+  --color-cafe-300: #b98a5e;
+  --color-cafe-400: #a06e42;
+  --color-cafe-500: #8a5a33;
+  --color-cafe-600: #704527;
+  --color-cafe-700: #57341c;
+  --color-cafe-800: #3f2413;
+  --color-cafe-900: #2b170b;
+  --shadow-suave: 0 10px 25px -6px rgb(87 52 28 / 0.14), 0 4px 10px -6px rgb(87 52 28 / 0.08);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-crema-100);
+    color: var(--color-cafe-900);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer utilities {
+  .cursor-pointer {
+    cursor: pointer;
+  }
+}
+
+button,
+[role="button"],
+a[href],
+RouterLink,
+.cursor-pointer {
+  cursor: pointer;
+}

@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - glotoncitos-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./glotoncitos-api
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      SEED_BUSINESS_SLUG: ${SEED_BUSINESS_SLUG}
+      SEED_BUSINESS_NAME: ${SEED_BUSINESS_NAME}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+      SEED_MESERO_EMAIL: ${SEED_MESERO_EMAIL}
+      SEED_MESERO_PASSWORD: ${SEED_MESERO_PASSWORD}
+      SEED_CAJERO_EMAIL: ${SEED_CAJERO_EMAIL}
+      SEED_CAJERO_PASSWORD: ${SEED_CAJERO_PASSWORD}
+      SEED_COCINA_EMAIL: ${SEED_COCINA_EMAIL}
+      SEED_COCINA_PASSWORD: ${SEED_COCINA_PASSWORD}
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "npm run db:setup && npm start"]
+    restart: unless-stopped
+
+volumes:
+  glotoncitos-data:
