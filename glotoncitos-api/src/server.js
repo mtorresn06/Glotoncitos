@@ -6,6 +6,12 @@ import { pool, closePool } from './db/pool.js'
 import { getServerConfig } from './config/env.js'
 import authRoutes from './routes/auth.js'
 import userRoutes from './routes/users.js'
+import menuRoutes from './routes/menu.js'
+import tableRoutes from './routes/tables.js'
+import orderRoutes from './routes/orders.js'
+import paymentRoutes from './routes/payments.js'
+import reportRoutes from './routes/reports.js'
+import frontendRoutes from './routes/frontend.js'
 import { HttpError } from './utils/errors.js'
 
 export const app = express()
@@ -35,6 +41,12 @@ app.get('/health', async (_req, res, next) => {
 
 app.use('/api/auth', authRoutes)
 app.use('/api', userRoutes)
+app.use('/api', frontendRoutes)
+app.use('/api/menu', menuRoutes)
+app.use('/api/tables', tableRoutes)
+app.use('/api/orders', orderRoutes)
+app.use('/api/payments', paymentRoutes)
+app.use('/api/reports', reportRoutes)
 
 app.use((_req, _res, next) => {
   next(new HttpError(404, 'NOT_FOUND', 'Route not found'))
