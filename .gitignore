@@ -3,3 +3,6 @@ node_modules
 dist
 *.log
 .DS_Store
+test_login.json
+test_*.ps1
+test_db.js
