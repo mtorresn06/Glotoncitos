@@ -14,7 +14,8 @@ const ahora = ref(Date.now())
 
 let temporizador
 
-onMounted(() => {
+onMounted(async () => {
+  await datos.cargarDatos()
   temporizador = setInterval(() => {
     ahora.value = Date.now()
   }, 10000)
@@ -39,8 +40,8 @@ function alSeleccionar(mesa) {
   }
 }
 
-function confirmarCreacion(items) {
-  datos.crearPedido(modalCrear.value.id, items)
+async function confirmarCreacion(items) {
+  await datos.crearPedido(modalCrear.value.id, items)
   modalCrear.value = null
 }
 </script>
@@ -68,32 +69,44 @@ function confirmarCreacion(items) {
       </div>
     </div>
 
-    <div class="mb-5 flex gap-2">
-      <button
-        v-for="piso in datos.pisos"
-        :key="piso"
-        type="button"
-        class="rounded-xl px-5 py-2 text-sm font-bold transition-colors"
-        :class="
-          pisoActivo === piso
-            ? 'bg-cafe-700 text-crema-50 shadow'
-            : 'border border-cafe-900/10 bg-white text-cafe-600 hover:bg-crema-200'
-        "
-        @click="pisoActivo = piso"
-      >
-        Piso {{ piso }}
-      </button>
+    <div v-if="datos.cargando" class="flex items-center justify-center py-12">
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-cafe-700"></div>
     </div>
 
-    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-      <TarjetaMesa
-        v-for="mesa in mesasDelPiso"
-        :key="mesa.id"
-        :mesa="mesa"
-        :ahora="ahora"
-        @seleccionar="alSeleccionar"
-      />
+    <div v-else-if="datos.error" class="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
+      <p class="font-semibold">Error al cargar datos</p>
+      <p class="text-sm">{{ datos.error }}</p>
+      <button class="mt-2 rounded-lg bg-cafe-700 px-4 py-2 text-sm font-bold text-crema-50" @click="datos.cargarDatos">Reintentar</button>
     </div>
+
+    <template v-else>
+      <div class="mb-5 flex gap-2">
+        <button
+          v-for="piso in datos.pisos"
+          :key="piso"
+          type="button"
+          class="rounded-xl px-5 py-2 text-sm font-bold transition-colors"
+          :class="
+            pisoActivo === piso
+              ? 'bg-cafe-700 text-crema-50 shadow'
+              : 'border border-cafe-900/10 bg-white text-cafe-600 hover:bg-crema-200'
+          "
+          @click="pisoActivo = piso"
+        >
+          Piso {{ piso }}
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <TarjetaMesa
+          v-for="mesa in mesasDelPiso"
+          :key="mesa.id"
+          :mesa="mesa"
+          :ahora="ahora"
+          @seleccionar="alSeleccionar"
+        />
+      </div>
+    </template>
 
     <ModalCrearPedido
       v-if="modalCrear"
