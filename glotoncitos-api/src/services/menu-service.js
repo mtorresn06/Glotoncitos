@@ -1,0 +1,188 @@
+import { pool } from '../db/pool.js'
+import { badRequest, conflict, notFound } from '../utils/errors.js'
+import {
+  normalizeBoolean,
+  normalizeName,
+  normalizePrice,
+  normalizeProductType,
+  normalizeUuid,
+} from '../utils/validation.js'
+
+export function formatCategory(row) {
+  return {
+    id: row.id_categoria,
+    name: row.nombre,
+    createdAt: row.creado_en,
+    updatedAt: row.actualizado_en,
+  }
+}
+
+export function formatProduct(row) {
+  return {
+    id: row.id_producto,
+    restaurantId: row.id_restaurante,
+    categoryId: row.id_categoria,
+    categoryName: row.categoria_nombre,
+    name: row.nombre,
+    description: row.descripcion,
+    price: Number(row.precio),
+    type: row.tipo,
+    available: row.disponible,
+    createdAt: row.creado_en,
+    updatedAt: row.actualizado_en,
+  }
+}
+
+export async function listCategories() {
+  const result = await pool.query(
+    `SELECT id_categoria, nombre, creado_en, actualizado_en
+     FROM categorias
+     ORDER BY nombre`,
+  )
+  return result.rows.map(formatCategory)
+}
+
+export async function createCategory({ name }) {
+  const normalizedName = normalizeName(name, 'Category name')
+  const result = await pool.query(
+    `INSERT INTO categorias (nombre)
+     VALUES ($1)
+     RETURNING id_categoria, nombre, creado_en, actualizado_en`,
+    [normalizedName],
+  )
+  return formatCategory(result.rows[0])
+}
+
+export async function updateCategory(categoryId, { name }) {
+  const id = normalizeUuid(categoryId, 'Category id')
+  const normalizedName = normalizeName(name, 'Category name')
+  const result = await pool.query(
+    `UPDATE categorias
+     SET nombre = $1, actualizado_en = now()
+     WHERE id_categoria = $2
+     RETURNING id_categoria, nombre, creado_en, actualizado_en`,
+    [normalizedName, id],
+  )
+  if (result.rowCount === 0) throw notFound('Category not found')
+  return formatCategory(result.rows[0])
+}
+
+export async function deleteCategory(categoryId) {
+  const id = normalizeUuid(categoryId, 'Category id')
+  try {
+    const result = await pool.query('DELETE FROM categorias WHERE id_categoria = $1', [id])
+    if (result.rowCount === 0) throw notFound('Category not found')
+  } catch (error) {
+    if (error?.code === '23503') throw conflict('Category is used by products')
+    throw error
+  }
+}
+
+export async function listProducts(restaurantId, { availableOnly = false } = {}) {
+  const id = normalizeUuid(restaurantId, 'Restaurant id')
+  const result = await pool.query(
+    `SELECT p.id_producto, p.id_restaurante, p.id_categoria, c.nombre AS categoria_nombre,
+            p.nombre, p.descripcion, p.precio, p.tipo, p.disponible,
+            p.creado_en, p.actualizado_en
+     FROM productos p
+     JOIN categorias c ON c.id_categoria = p.id_categoria
+     WHERE p.id_restaurante = $1
+       AND ($2 = false OR p.disponible = true)
+     ORDER BY c.nombre, p.nombre`,
+    [id, availableOnly],
+  )
+  return result.rows.map(formatProduct)
+}
+
+export async function createProduct({ restaurantId, categoryId, name, description = '', price, type = 'plato', available = true }) {
+  const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
+  const idCategory = normalizeUuid(categoryId, 'Category id')
+  const normalizedName = normalizeName(name, 'Product name')
+  const normalizedDescription = description === undefined ? '' : String(description).trim().slice(0, 500)
+  const normalizedPrice = normalizePrice(price)
+  const normalizedType = normalizeProductType(type)
+  const normalizedAvailable = normalizeBoolean(available, 'Available')
+  const category = await pool.query('SELECT id_categoria FROM categorias WHERE id_categoria = $1', [idCategory])
+  if (category.rowCount === 0) throw notFound('Category not found')
+
+  const result = await pool.query(
+    `INSERT INTO productos
+      (id_restaurante, id_categoria, nombre, descripcion, precio, tipo, disponible)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id_producto, id_restaurante, id_categoria, nombre, descripcion,
+               precio, tipo, disponible, creado_en, actualizado_en`,
+    [idRestaurant, idCategory, normalizedName, normalizedDescription, normalizedPrice, normalizedType, normalizedAvailable],
+  )
+  return getProduct(result.rows[0].id_producto, idRestaurant)
+}
+
+export async function updateProduct(productId, restaurantId, updates) {
+  const id = normalizeUuid(productId, 'Product id')
+  const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
+  const current = await pool.query(
+    `SELECT id_producto, id_restaurante, id_categoria, nombre, descripcion,
+            precio, tipo, disponible
+     FROM productos
+     WHERE id_producto = $1 AND id_restaurante = $2`,
+    [id, idRestaurant],
+  )
+  if (current.rowCount === 0) throw notFound('Product not found')
+
+  const product = current.rows[0]
+  const name = updates.name === undefined ? product.nombre : normalizeName(updates.name, 'Product name')
+  const description = updates.description === undefined
+    ? product.descripcion
+    : String(updates.description).trim().slice(0, 500)
+  const price = updates.price === undefined ? Number(product.precio) : normalizePrice(updates.price)
+  const type = updates.type === undefined ? product.tipo : normalizeProductType(updates.type)
+  const available = updates.available === undefined
+    ? product.disponible
+    : normalizeBoolean(updates.available, 'Available')
+  const categoryId = updates.categoryId === undefined
+    ? product.id_categoria
+    : normalizeUuid(updates.categoryId, 'Category id')
+  const category = await pool.query('SELECT id_categoria FROM categorias WHERE id_categoria = $1', [categoryId])
+  if (category.rowCount === 0) throw notFound('Category not found')
+
+  await pool.query(
+    `UPDATE productos
+     SET id_categoria = $1, nombre = $2, descripcion = $3, precio = $4,
+         tipo = $5, disponible = $6, actualizado_en = now()
+     WHERE id_producto = $7 AND id_restaurante = $8
+     RETURNING id_producto, id_restaurante, id_categoria, nombre, descripcion,
+               precio, tipo, disponible, creado_en, actualizado_en`,
+    [categoryId, name, description, price, type, available, id, idRestaurant],
+  )
+  return getProduct(id, idRestaurant)
+}
+
+export async function deleteProduct(productId, restaurantId) {
+  const id = normalizeUuid(productId, 'Product id')
+  const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
+  try {
+    const result = await pool.query(
+      'DELETE FROM productos WHERE id_producto = $1 AND id_restaurante = $2',
+      [id, idRestaurant],
+    )
+    if (result.rowCount === 0) throw notFound('Product not found')
+  } catch (error) {
+    if (error?.code === '23503') throw conflict('Product is used by orders')
+    throw error
+  }
+}
+
+export async function getProduct(productId, restaurantId) {
+  const id = normalizeUuid(productId, 'Product id')
+  const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
+  const result = await pool.query(
+    `SELECT p.id_producto, p.id_restaurante, p.id_categoria, c.nombre AS categoria_nombre,
+            p.nombre, p.descripcion, p.precio, p.tipo, p.disponible,
+            p.creado_en, p.actualizado_en
+     FROM productos p
+     JOIN categorias c ON c.id_categoria = p.id_categoria
+     WHERE p.id_producto = $1 AND p.id_restaurante = $2`,
+    [id, idRestaurant],
+  )
+  if (result.rowCount === 0) throw notFound('Product not found')
+  return formatProduct(result.rows[0])
+}

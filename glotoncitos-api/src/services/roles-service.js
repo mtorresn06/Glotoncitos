@@ -1,37 +1,51 @@
 import { pool } from '../db/pool.js'
-import { badRequest } from '../utils/errors.js'
+import { badRequest, notFound } from '../utils/errors.js'
 
-export async function getRolesForUser(queryable, userId, businessId) {
+export function formatRole(row) {
+  return {
+    id: row.id_rol,
+    code: row.codigo,
+    name: row.nombre,
+    description: row.descripcion,
+  }
+}
+
+export async function getRoleByCode(queryable, code) {
   const result = await queryable.query(
-    `SELECT r.id, r.code, r.name, r.description
-     FROM user_roles ur
-     JOIN roles r ON r.id = ur.role_id
-     WHERE ur.user_id = $1 AND ur.business_id = $2
-     ORDER BY r.code`,
-    [userId, businessId],
+    'SELECT id_rol, codigo, nombre, descripcion FROM roles WHERE codigo = $1',
+    [code],
   )
+  return result.rows[0] || null
+}
 
-  return result.rows
+export async function getRoleForUser(queryable, userId, restaurantId) {
+  const result = await queryable.query(
+    `SELECT r.id_rol, r.codigo, r.nombre, r.descripcion
+     FROM usuarios u
+     JOIN roles r ON r.id_rol = u.id_rol
+     WHERE u.id_usuario = $1 AND u.id_restaurante = $2`,
+    [userId, restaurantId],
+  )
+  return result.rows[0] || null
 }
 
 export async function listRoles() {
   const result = await pool.query(
-    `SELECT id, code, name, description
+    `SELECT id_rol, codigo, nombre, descripcion
      FROM roles
-     ORDER BY code`,
+     ORDER BY codigo`,
   )
-  return result.rows
+  return result.rows.map(formatRole)
 }
 
-export async function requireRolesExist(queryable, roleCodes) {
-  const result = await queryable.query(
-    'SELECT code FROM roles WHERE code = ANY($1::text[])',
-    [roleCodes],
-  )
-  const found = new Set(result.rows.map((role) => role.code))
-  const missing = roleCodes.filter((roleCode) => !found.has(roleCode))
+export async function requireRoleExists(queryable, roleCode) {
+  const role = await getRoleByCode(queryable, roleCode)
+  if (!role) throw badRequest('Role does not exist', { roleCode })
+  return role
+}
 
-  if (missing.length > 0) {
-    throw badRequest('One or more roles do not exist', { missing })
-  }
+export async function getUserRole(userId, restaurantId) {
+  const role = await getRoleForUser(pool, userId, restaurantId)
+  if (!role) throw notFound('User role not found')
+  return formatRole(role)
 }
