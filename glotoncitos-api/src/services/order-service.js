@@ -119,10 +119,13 @@ export async function listOrders(restaurantId, roleCode, userId) {
   return orders
 }
 
-export async function createOrder({ restaurantId, userId, mesaId, items }) {
+export async function createOrder({ restaurantId, userId, mesaId, items, personas }) {
   const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
   const idUser = normalizeUuid(userId, 'User id')
   const idMesa = normalizeUuid(mesaId, 'Table id')
+  const ocupadasPersonas = personas === undefined
+    ? 1
+    : normalizePositiveInteger(personas, 'Número de personas')
   if (!Array.isArray(items) || items.length === 0) throw badRequest('At least one item is required')
 
   const normalizedItems = items.map((item) => ({
@@ -140,7 +143,17 @@ export async function createOrder({ restaurantId, userId, mesaId, items }) {
       [idMesa, idRestaurant],
     )
     if (table.rowCount === 0) throw notFound('Table not found')
-    if (table.rows[0].estado !== 'ocupada') throw badRequest('Table must be occupied')
+    if (table.rows[0].estado === 'reservada') throw badRequest('Table is reserved')
+
+    await client.query(
+      `UPDATE mesas
+       SET estado = 'sin_atender',
+           ocupada_desde = COALESCE(ocupada_desde, now()),
+           ocupada_personas = $1,
+           actualizado_en = now()
+       WHERE id_mesa = $2 AND id_restaurante = $3`,
+      [ocupadasPersonas, idMesa, idRestaurant],
+    )
 
     const activeOrder = await client.query(
       `SELECT id_pedido FROM pedidos
@@ -214,6 +227,72 @@ async function recalculateOrderStatus(client, orderId) {
     [status, orderId],
   )
   return status
+}
+
+export async function addOrderItems({ orderId, restaurantId, userId, items }) {
+  const idOrder = normalizeUuid(orderId, 'Order id')
+  const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
+  const idUser = normalizeUuid(userId, 'User id')
+  if (!Array.isArray(items) || items.length === 0) throw badRequest('At least one item is required')
+
+  const nuevosItems = items.map((item) => ({
+    productId: normalizeUuid(item?.productoId, 'Product id'),
+    quantity: normalizeQuantity(item?.cantidad),
+    notes: normalizeNotes(item?.notas),
+  }))
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+    const order = await client.query(
+      `SELECT id_pedido, id_mesa
+       FROM pedidos
+       WHERE id_pedido = $1 AND id_restaurante = $2 AND id_usuario = $3
+         AND estado NOT IN ('cerrado', 'cancelado')
+       FOR UPDATE`,
+      [idOrder, idRestaurant, idUser],
+    )
+    if (order.rowCount === 0) throw notFound('Order not found')
+
+    const productIds = [...new Set(nuevosItems.map((item) => item.productId))]
+    const productsResult = await client.query(
+      `SELECT id_producto, nombre, precio, disponible
+       FROM productos
+       WHERE id_producto = ANY($1::uuid[]) AND id_restaurante = $2`,
+      [productIds, idRestaurant],
+    )
+    const productosPorId = new Map(productsResult.rows.map((producto) => [producto.id_producto, producto]))
+    for (const item of nuevosItems) {
+      const producto = productosPorId.get(item.productId)
+      if (!producto) throw notFound('Product not found')
+      if (!producto.disponible) throw badRequest(`Product ${producto.nombre} is unavailable`)
+    }
+
+    for (const item of nuevosItems) {
+      const producto = productosPorId.get(item.productId)
+      await client.query(
+        `INSERT INTO detalles_pedido
+          (id_pedido, id_producto, id_restaurante, cantidad, notas, precio_unitario)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [idOrder, item.productId, idRestaurant, item.quantity, item.notes, producto.precio],
+      )
+    }
+
+    await client.query(
+      `UPDATE mesas
+       SET estado = 'sin_atender', ocupada_desde = now(), actualizado_en = now()
+       WHERE id_mesa = $1 AND id_restaurante = $2 AND estado = 'atendida'`,
+      [order.rows[0].id_mesa, idRestaurant],
+    )
+    await recalculateOrderStatus(client, idOrder)
+    await client.query('COMMIT')
+    return getOrder(idOrder, idRestaurant)
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
 }
 
 export async function updateOrderItem({ orderId, itemId, restaurantId, quantity, notes, cancel = false }) {

@@ -24,6 +24,7 @@ router.post('/', authenticateToken, requireAdmin, asyncRoute(async (req, res) =>
     restaurantId: req.auth.restaurantId,
     number: req.body?.number,
     capacity: req.body?.capacity,
+    idPiso: req.body?.idPiso,
   })
   res.status(201).json({ table })
 }))

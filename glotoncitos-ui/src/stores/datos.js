@@ -1,11 +1,21 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { useSesionStore } from './sesion'
 import {
   getProductos,
   getMesas,
   getPedidos,
+  getPedidosListos,
   getPedidosCerrados,
-  getTrabajadores, // <--- 1. Importado correctamente desde api.js
+  getTrabajadores,
+  getPisos,
+  crearPiso as apiCrearPiso,
+  crearMesa as apiCrearMesa,
+  actualizarMesa as apiActualizarMesa,
+  cambiarEstadoMesa as apiCambiarEstadoMesa,
+  agregarProductosPedido as apiAgregarProductosPedido,
+  cancelarMesa as apiCancelarMesa,
+  cambiarMesa as apiCambiarMesa,
   crearPedido as apiCrearPedido,
   avanzarProducto as apiAvanzarProducto,
   cancelarProducto as apiCancelarProducto,
@@ -14,9 +24,12 @@ import {
 } from '../services/api.js'
 
 export const useDatosStore = defineStore('datos', () => {
+  const sesion = useSesionStore()
   const menu = ref([])
   const mesas = ref([])
+  const pisos = ref([])
   const pedidos = ref([])
+  const pedidosListos = ref([])
   const pedidosCerrados = ref([])
   const trabajadores = ref([])
   const ventasBase = ref(0)
@@ -37,7 +50,7 @@ export const useDatosStore = defineStore('datos', () => {
   }
 
   function totalDeMesa(mesaId) {
-    const pedido = pedidoDeMesa(mesaId)
+    const pedido = pedidoDeMesa(mesaId) || pedidosListos.value.find((p) => p.mesaId === mesaId)
     return pedido ? totalPedido(pedido) : 0
   }
 
@@ -45,23 +58,37 @@ export const useDatosStore = defineStore('datos', () => {
     return pedido.productos.length > 0 && pedido.productos.every((p) => p.estado === 'listo')
   }
 
+  const esAdmin = computed(() => sesion.rolId === 'administrador')
+  const esMesero = computed(() => sesion.rolId === 'mesero')
+
   async function cargarDatos() {
     cargando.value = true
     error.value = ''
     try {
-      // <--- 2. Añadido getTrabajadores y recibido en la variable correspondiente
-      const [productos, mesasData, pedidosData, pedidosCerradosData, trabajadoresData] = await Promise.all([
+      const [
+        productos,
+        mesasData,
+        pisosData,
+        pedidosData,
+        pedidosListosData,
+        pedidosCerradosData,
+        trabajadoresData,
+      ] = await Promise.all([
         getProductos(),
         getMesas(),
+        getPisos(),
         getPedidos(),
-        getPedidosCerrados(),
-        getTrabajadores(),
+        esMesero.value ? getPedidosListos() : Promise.resolve([]),
+        esAdmin.value ? getPedidosCerrados() : Promise.resolve([]),
+        esAdmin.value ? getTrabajadores() : Promise.resolve([]),
       ])
       menu.value = productos
       mesas.value = mesasData
+      pisos.value = pisosData
       pedidos.value = pedidosData
+      pedidosListos.value = pedidosListosData
       pedidosCerrados.value = pedidosCerradosData
-      trabajadores.value = trabajadoresData // <--- 3. Asignado al ref de trabajadores
+      trabajadores.value = trabajadoresData
     } catch (e) {
       error.value = e.message || 'Error al cargar datos'
     } finally {
@@ -69,7 +96,65 @@ export const useDatosStore = defineStore('datos', () => {
     }
   }
 
-  async function crearPedido(mesaId, items) {
+  async function crearPiso(numero) {
+    const response = await apiCrearPiso({ numero })
+    await cargarDatos()
+    return response.piso
+  }
+
+  async function crearMesa({ numero, capacidad, idPiso }) {
+    const response = await apiCrearMesa({ numero, capacidad, idPiso })
+    await cargarDatos()
+    return response.mesa
+  }
+
+  async function actualizarMesa(idMesa, { numero }) {
+    const response = await apiActualizarMesa(idMesa, { numero })
+    await cargarDatos()
+    return response.mesa
+  }
+
+  async function cargarMesas() {
+    const [mesasData, pisosData, pedidosListosData] = await Promise.all([
+      getMesas(),
+      getPisos(),
+      esMesero.value ? getPedidosListos() : Promise.resolve([]),
+    ])
+    mesas.value = mesasData
+    pisos.value = pisosData
+    if (esMesero.value) pedidosListos.value = pedidosListosData
+  }
+
+  async function cambiarEstadoMesa(idMesa, estado) {
+    const response = await apiCambiarEstadoMesa(idMesa, estado)
+    await cargarMesas()
+    return response.mesa
+  }
+
+  async function cancelarMesa(idMesa) {
+    const response = await apiCancelarMesa(idMesa)
+    await cargarDatos()
+    return response.mesa
+  }
+
+  async function cambiarMesa(idMesa, idMesaDestino) {
+    const response = await apiCambiarMesa(idMesa, idMesaDestino)
+    await cargarDatos()
+    return response.mesa
+  }
+
+  async function agregarProductosPedido(pedidoId, items) {
+    const productos = items.map((item) => ({
+      productoId: item.productoId,
+      cantidad: item.cantidad,
+      nota: (item.nota || '').trim(),
+    }))
+    const response = await apiAgregarProductosPedido(pedidoId, productos)
+    await cargarDatos()
+    return response.pedido
+  }
+
+  async function crearPedido(mesaId, items, personas = 1) {
     const productosMap = new Map(menu.value.map((p) => [p.id, p]))
     const productos = items.map((item) => {
       const producto = productosMap.get(item.productoId)
@@ -83,11 +168,11 @@ export const useDatosStore = defineStore('datos', () => {
       }
     })
 
-    const payload = { mesaId, productos }
+    const payload = { mesaId, productos, personas }
     const response = await apiCrearPedido(payload)
 
     await cargarDatos()
-    return response.id
+    return response.pedido?.id
   }
 
   async function avanzarProducto(pedidoId, indice) {
@@ -109,8 +194,6 @@ export const useDatosStore = defineStore('datos', () => {
     await apiRegistrarPago(pedidoId)
     await cargarDatos()
   }
-
-  const pisos = computed(() => [...new Set(mesas.value.map((m) => m.piso))].sort((a, b) => a - b))
 
   const mesasPorPiso = (piso) => mesas.value.filter((m) => m.piso === piso)
 
@@ -141,6 +224,7 @@ export const useDatosStore = defineStore('datos', () => {
     menu,
     mesas,
     pedidos,
+    pedidosListos,
     pedidosCerrados,
     trabajadores,
     pisos,
@@ -158,6 +242,14 @@ export const useDatosStore = defineStore('datos', () => {
     totalPedido,
     pedidoCompleto,
     cargarDatos,
+    crearPiso,
+    crearMesa,
+    actualizarMesa,
+    cargarMesas,
+    cambiarEstadoMesa,
+    cancelarMesa,
+    cambiarMesa,
+    agregarProductosPedido,
     crearPedido,
     avanzarProducto,
     cancelarProducto,

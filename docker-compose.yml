@@ -38,7 +38,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: ["sh", "-c", "npm run db:setup && npm start"]
+    command: ["sh", "-c", "npm run db:migrate && npm start"]
     restart: unless-stopped
 
 volumes:

@@ -10,13 +10,18 @@ import {
   getTable,
   createTable,
   updateTable,
+  updateTableStatus,
+  cancelarMesa,
+  cambiarMesaOrden,
 } from '../services/table-service.js'
+import { crearPiso, listarPisos } from '../services/piso-service.js'
 import {
   listOrders,
   getOrder,
   createOrder,
   updateOrderItem,
   updateOrderItemStatus,
+  addOrderItems,
 } from '../services/order-service.js'
 import { createPayment, listPayments } from '../services/payment-service.js'
 import {
@@ -38,69 +43,72 @@ function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
 }
 
-function formatProductItem(row) {
+function formatProductItem(producto) {
   return {
-    id: row.id_producto,
-    nombre: row.nombre,
-    precio: Number(row.precio),
-    categoria: row.categoria_nombre,
-    disponible: row.disponible,
+    id: producto.id,
+    nombre: producto.name,
+    precio: Number(producto.price),
+    categoria: producto.categoryName,
+    disponible: producto.available,
   }
 }
 
-function formatFrontendTable(row) {
+function formatFrontendTable(mesa) {
   return {
-    id: row.id_mesa,
-    nombre: String(row.numero),
-    estado: row.estado,
-    piso: null,
-    ocupadaDesde: row.ocupada_desde,
-    capacity: row.capacity,
-    restaurantId: row.id_restaurante,
-    createdAt: row.creado_en,
-    updatedAt: row.actualizado_en,
+    id: mesa.id,
+    nombre: String(mesa.number),
+    estado: mesa.status,
+    piso: mesa.piso,
+    idPiso: mesa.idPiso,
+    pedidoListo: mesa.pedidoListo,
+    ocupadaDesde: mesa.occupiedSince,
+    ocupadaPersonas: mesa.ocupadaPersonas,
+    capacidad: mesa.capacity,
+    idRestaurante: mesa.restaurantId,
+    creadoEn: mesa.createdAt,
+    actualizadoEn: mesa.updatedAt,
   }
 }
 
-function formatFrontendOrder(row) {
+function formatFrontendOrder(pedido) {
   return {
-    id: row.id_pedidos,
-    mesaId: row.id_mesa,
-    mesaNombre: row.mesa_numero ? String(row.mesa_numero) : '',
-    estado: row.estado,
-    creadoEn: row.fecha_hora,
-    actualizadoEn: row.actualizado_en,
-    productos: (row.items || []).map((item) => ({
-      productoId: item.id_producto,
+    id: pedido.id,
+    mesaId: pedido.table?.id,
+    mesaNombre: pedido.table?.number ? String(pedido.table.number) : '',
+    estado: pedido.status,
+    creadoEn: pedido.createdAt,
+    actualizadoEn: pedido.updatedAt,
+    productos: (pedido.items || []).map((item) => ({
+      productoId: item.productId,
       cantidad: item.quantity,
       nombre: item.productName,
       precio: item.unitPrice,
       estado: item.status,
       nota: item.notes,
     })),
-    total: row.total,
-    pagadoEn: row.fecha_hora,
+    total: pedido.total,
+    pagadoEn: pedido.createdAt,
   }
 }
 
-function formatFrontendClosedOrder(row) {
+function formatFrontendClosedOrder(pedido) {
   return {
-    id: row.id_pedidos,
-    mesaId: row.id_mesa,
-    mesaNombre: row.mesa_numero ? String(row.mesa_numero) : '',
-    estado: row.estado,
-    creadoEn: row.fecha_hora,
-    actualizadoEn: row.actualizado_en,
-    productos: (row.items || []).map((item) => ({
-      productoId: item.id_producto,
+    id: pedido.id,
+    mesaId: pedido.table?.id,
+    mesaNombre: pedido.table?.number ? String(pedido.table.number) : '',
+    estado: pedido.status,
+    creadoEn: pedido.createdAt,
+    actualizadoEn: pedido.updatedAt,
+    productos: (pedido.items || []).map((item) => ({
+      productoId: item.productId,
       cantidad: item.quantity,
       nombre: item.productName,
       precio: item.unitPrice,
       estado: item.status,
       nota: item.notes,
     })),
-    total: row.total,
-    pagadoEn: row.fecha_hora,
+    total: pedido.total,
+    pagadoEn: pedido.createdAt,
   }
 }
 
@@ -143,6 +151,23 @@ router.put('/productos/:id', authenticateToken, requireAdmin, asyncRoute(async (
   res.json(formatProductItem(product))
 }))
 
+router.get('/pisos', authenticateToken, asyncRoute(async (req, res) => {
+  const pisos = await listarPisos(req.auth.restaurantId)
+  res.json(pisos.map((piso) => ({
+    id: piso.id,
+    nombre: String(piso.numero),
+    numero: piso.numero,
+  })))
+}))
+
+router.post('/pisos', authenticateToken, requireAdmin, asyncRoute(async (req, res) => {
+  const piso = await crearPiso({
+    idRestaurante: req.auth.restaurantId,
+    numero: req.body?.numero,
+  })
+  res.status(201).json({ piso: { id: piso.id, nombre: String(piso.numero), numero: piso.numero } })
+}))
+
 router.get('/mesas', authenticateToken, asyncRoute(async (req, res) => {
   const tables = await listTables(req.auth.restaurantId)
   res.json(tables.map(formatFrontendTable))
@@ -156,17 +181,44 @@ router.get('/mesas/:id', authenticateToken, asyncRoute(async (req, res) => {
 router.post('/mesas', authenticateToken, requireAdmin, asyncRoute(async (req, res) => {
   const table = await createTable({
     restaurantId: req.auth.restaurantId,
-    number: req.body?.number,
-    capacity: req.body?.capacity,
+    number: req.body?.numero,
+    capacity: req.body?.capacidad,
+    idPiso: req.body?.idPiso,
   })
   res.status(201).json({ mesa: formatFrontendTable(table) })
 }))
 
 router.put('/mesas/:id', authenticateToken, requireAdmin, asyncRoute(async (req, res) => {
   const table = await updateTable(req.params.id, req.auth.restaurantId, {
-    number: req.body?.number,
-    capacity: req.body?.capacity,
-    status: req.body?.status,
+    number: req.body?.numero,
+    capacity: req.body?.capacidad,
+    idPiso: req.body?.idPiso,
+    status: req.body?.estado,
+  })
+  res.json({ mesa: formatFrontendTable(table) })
+}))
+
+router.patch('/mesas/:id/estado', authenticateToken, requireMesero, asyncRoute(async (req, res) => {
+  const table = await updateTableStatus(
+    req.params.id,
+    req.auth.restaurantId,
+    req.auth.userId,
+    req.body?.estado,
+  )
+  res.json({ mesa: formatFrontendTable(table) })
+}))
+
+router.post('/mesas/:id/cancelar', authenticateToken, requireMesero, asyncRoute(async (req, res) => {
+  const table = await cancelarMesa(req.params.id, req.auth.restaurantId)
+  res.json({ mesa: formatFrontendTable(table) })
+}))
+
+router.post('/mesas/:id/cambiar-mesa', authenticateToken, requireMesero, asyncRoute(async (req, res) => {
+  const body = req.body || {}
+  const table = await cambiarMesaOrden({
+    mesaOrigenId: req.params.id,
+    mesaDestinoId: body.idMesaDestino || body.mesaDestinoId || body.idDestino,
+    restaurantId: req.auth.restaurantId,
   })
   res.json({ mesa: formatFrontendTable(table) })
 }))
@@ -180,6 +232,11 @@ router.get('/pedidos-cerrados', authenticateToken, requireAdmin, asyncRoute(asyn
   const orders = await listOrders(req.auth.restaurantId, 'admin', req.auth.userId)
   const closed = orders.filter((o) => o.status === 'cerrado' || o.status === 'cancelado')
   res.json(closed.map(formatFrontendClosedOrder))
+}))
+
+router.get('/pedidos/listos', authenticateToken, requireMesero, asyncRoute(async (req, res) => {
+  const orders = await listOrders(req.auth.restaurantId, 'admin', req.auth.userId)
+  res.json(orders.filter((order) => order.status === 'listo').map(formatFrontendOrder))
 }))
 
 router.get('/pedidos/:id', authenticateToken, requireRoles('mesero', 'cajero', 'admin'), asyncRoute(async (req, res) => {
@@ -199,6 +256,24 @@ router.post('/pedidos', authenticateToken, requireMesero, asyncRoute(async (req,
     restaurantId: req.auth.restaurantId,
     userId: req.auth.userId,
     mesaId: body.mesaId || body.tableId || body.id_mesa,
+    items: normalizedItems,
+    personas: body.personas,
+  })
+  res.status(201).json({ pedido: formatFrontendOrder(order) })
+}))
+
+router.post('/pedidos/:id/items', authenticateToken, requireMesero, asyncRoute(async (req, res) => {
+  const body = req.body || {}
+  const items = body.productos || body.items || []
+  const normalizedItems = items.map((item) => ({
+    productoId: item.productoId,
+    cantidad: item.cantidad,
+    notas: item.nota || item.notas || '',
+  }))
+  const order = await addOrderItems({
+    orderId: req.params.id,
+    restaurantId: req.auth.restaurantId,
+    userId: req.auth.userId,
     items: normalizedItems,
   })
   res.status(201).json({ pedido: formatFrontendOrder(order) })

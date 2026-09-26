@@ -24,8 +24,8 @@ onMounted(async () => {
 onBeforeUnmount(() => clearInterval(temporizador))
 
 const mesasDelPiso = computed(() => datos.mesasPorPiso(pisoActivo.value))
-const libresDelPiso = computed(() => mesasDelPiso.value.filter((m) => m.estado === 'libre').length)
-const ocupadasDelPiso = computed(() => mesasDelPiso.value.length - libresDelPiso.value)
+const disponiblesDelPiso = computed(() => mesasDelPiso.value.filter((m) => m.estado === 'libre').length)
+const sinAtenderDelPiso = computed(() => mesasDelPiso.value.filter((m) => m.estado === 'sin_atender').length)
 
 const productoCompleto = (mesaId) => {
   const pedido = datos.pedidoDeMesa(mesaId)
@@ -52,19 +52,15 @@ async function confirmarCreacion(items) {
       <div>
         <h1 class="text-2xl font-extrabold tracking-tight text-cafe-800">Panel de Mesas</h1>
         <p class="text-sm text-cafe-500">
-          {{ libresDelPiso }} libres · {{ ocupadasDelPiso }} ocupadas en el piso seleccionado
+          {{ disponiblesDelPiso }} disponibles · {{ sinAtenderDelPiso }} sin atender en el piso seleccionado
         </p>
       </div>
       <div class="flex items-center gap-2">
         <span class="flex items-center gap-1.5 text-xs font-semibold text-cafe-500">
-          <span class="h-3 w-3 rounded-full border-2 border-green-300 bg-green-50"></span> Libre
+          <span class="h-3 w-3 rounded-full border-2 border-green-300 bg-green-50"></span> Disponible / atendida
         </span>
         <span class="flex items-center gap-1.5 text-xs font-semibold text-cafe-500">
-          <span class="h-3 w-3 rounded-full border-2 border-durazno-300 bg-crema-50"></span>
-          Ocupada
-        </span>
-        <span class="flex items-center gap-1.5 text-xs font-semibold text-green-700">
-          <span class="h-3 w-3 rounded-full bg-green-400"></span> Pedido listo
+          <span class="h-3 w-3 rounded-full border-2 border-red-200 bg-red-50"></span> Sin atender
         </span>
       </div>
     </div>
@@ -83,17 +79,17 @@ async function confirmarCreacion(items) {
       <div class="mb-5 flex gap-2">
         <button
           v-for="piso in datos.pisos"
-          :key="piso"
+          :key="piso.id"
           type="button"
           class="rounded-xl px-5 py-2 text-sm font-bold transition-colors"
           :class="
-            pisoActivo === piso
+            pisoActivo === piso.numero
               ? 'bg-cafe-700 text-crema-50 shadow'
               : 'border border-cafe-900/10 bg-white text-cafe-600 hover:bg-crema-200'
           "
-          @click="pisoActivo = piso"
+          @click="pisoActivo = piso.numero"
         >
-          Piso {{ piso }}
+          Piso {{ piso.numero }}
         </button>
       </div>
 

@@ -39,15 +39,15 @@ export function getProductos() {
 }
 
 export function getMenuProductos() {
-  return request('/menu/products')
+  return request('/menu/productos')
 }
 
 export function getMenuCategorias() {
-  return request('/menu/categories')
+  return request('/menu/categorias')
 }
 
 export function crearProductoMenu(datos) {
-  return request('/menu/products', {
+  return request('/menu/productos', {
     method: 'POST',
     body: datos,
   })
@@ -61,7 +61,7 @@ export function actualizarProductoMenu(id, datos) {
 }
 
 export function eliminarProductoMenu(id) {
-  return request(`/menu/products/${id}`, {
+  return request(`/menu/productos/${id}`, {
     method: 'DELETE',
   })
 }
@@ -70,8 +70,55 @@ export function getMesas() {
   return request('/mesas')
 }
 
+export function getPisos() {
+  return request('/pisos')
+}
+
+export function crearPiso(datos) {
+  return request('/pisos', {
+    method: 'POST',
+    body: datos,
+  })
+}
+
+export function crearMesa(datos) {
+  return request('/mesas', {
+    method: 'POST',
+    body: datos,
+  })
+}
+
+export function actualizarMesa(id, datos) {
+  return request(`/mesas/${id}`, {
+    method: 'PUT',
+    body: datos,
+  })
+}
+
+export function cambiarEstadoMesa(id, estado) {
+  return request(`/mesas/${id}/estado`, {
+    method: 'PATCH',
+    body: { estado },
+  })
+}
+
+export function cancelarMesa(id) {
+  return request(`/mesas/${id}/cancelar`, { method: 'POST' })
+}
+
+export function cambiarMesa(id, idMesaDestino) {
+  return request(`/mesas/${id}/cambiar-mesa`, {
+    method: 'POST',
+    body: { idMesaDestino },
+  })
+}
+
 export function getPedidos() {
   return request('/pedidos')
+}
+
+export function getPedidosListos() {
+  return request('/pedidos/listos')
 }
 
 export function getPedidosCerrados() {
@@ -82,6 +129,13 @@ export function crearPedido(payload) {
   return request('/pedidos', {
     method: 'POST',
     body: payload,
+  })
+}
+
+export function agregarProductosPedido(pedidoId, productos) {
+  return request(`/pedidos/${pedidoId}/items`, {
+    method: 'POST',
+    body: { productos },
   })
 }
 

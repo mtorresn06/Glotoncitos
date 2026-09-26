@@ -6,6 +6,7 @@ import { formatearTiempo } from '../utils/formato'
 const props = defineProps({
   mesa: { type: Object, required: true },
   ahora: { type: Number, required: true },
+  modoAdmin: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['seleccionar'])
@@ -13,11 +14,20 @@ const emit = defineEmits(['seleccionar'])
 const datos = useDatosStore()
 
 const pedido = computed(() => datos.pedidoDeMesa(props.mesa.id))
-const ocupada = computed(() => props.mesa.estado === 'ocupada')
-const listaCompleta = computed(() => (pedido.value ? datos.pedidoCompleto(pedido.value) : false))
-const tiempoOcupada = computed(() =>
-  props.mesa.ocupadaDesde ? formatearTiempo(props.mesa.ocupadaDesde, props.ahora) : '',
+const sinAtender = computed(() => props.mesa.estado === 'sin_atender')
+const atendida = computed(() => props.mesa.estado === 'atendida')
+const tiempoSinAtender = computed(() =>
+  sinAtender.value && props.mesa.ocupadaDesde
+    ? formatearTiempo(props.mesa.ocupadaDesde, props.ahora)
+    : '-',
 )
+const personas = computed(() => props.mesa.ocupadaPersonas || '-')
+const etiquetaEstado = computed(() => {
+  if (sinAtender.value) return 'Sin atender'
+  if (atendida.value) return 'Atendida'
+  if (props.mesa.estado === 'reservada') return 'Reservada'
+  return 'Disponible'
+})
 </script>
 
 <template>
@@ -25,9 +35,9 @@ const tiempoOcupada = computed(() =>
     type="button"
     class="flex flex-col gap-2 rounded-2xl border-2 p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-suave"
     :class="
-      ocupada
-        ? 'border-durazno-300 bg-crema-50 hover:border-durazno-400'
-        : 'border-green-300 bg-green-50 hover:border-green-400'
+      sinAtender
+        ? 'border-red-200 bg-red-50 hover:border-red-300'
+        : 'border-green-200 bg-green-50 hover:border-green-300'
     "
     @click="emit('seleccionar', mesa)"
   >
@@ -37,25 +47,40 @@ const tiempoOcupada = computed(() =>
         <p class="text-xs text-cafe-500">Piso {{ mesa.piso }}</p>
       </div>
       <span
-        v-if="ocupada"
         class="text-xs font-bold uppercase tracking-wide"
-        :class="listaCompleta ? 'text-green-700' : 'text-durazno-500'"
+        :class="sinAtender ? 'text-red-700' : 'text-green-700'"
       >
-        {{ listaCompleta ? 'Listo' : 'Ocupada' }}
+        {{ etiquetaEstado }}
       </span>
-      <span v-else class="text-xs font-bold uppercase tracking-wide text-green-700">Libre</span>
+    </div>
+
+    <div class="flex items-center justify-between gap-2 text-sm">
+      <span class="font-semibold text-cafe-600">Personas: {{ personas }}</span>
+      <span
+        class="font-semibold"
+        :class="sinAtender ? 'text-red-700' : 'text-cafe-400'"
+      >
+        Sin atender: {{ tiempoSinAtender }}
+      </span>
     </div>
 
     <p
-      v-if="ocupada"
-      class="rounded-lg px-2 py-1 text-sm font-semibold"
-      :class="listaCompleta ? 'bg-green-100 text-green-800' : 'bg-durazno-100 text-cafe-700'"
+      v-if="sinAtender && pedido"
+      class="rounded-lg bg-red-100 px-2 py-1 text-sm font-semibold text-red-800"
     >
-      {{ listaCompleta ? 'Pedido completo, se puede servir' : `Ocupada hace ${tiempoOcupada}` }}
+      {{ mesa.pedidoListo ? 'Comida lista, falta aceptarla' : 'Pedido en proceso' }}
     </p>
-    <p v-else class="rounded-lg px-2 py-1 text-sm text-cafe-500">Tocar para tomar pedido</p>
+    <p
+      v-else-if="atendida"
+      class="rounded-lg bg-green-100 px-2 py-1 text-sm font-semibold text-green-800"
+    >
+      Mesa atendida
+    </p>
+    <p v-else class="rounded-lg px-2 py-1 text-sm text-cafe-500">
+      {{ modoAdmin ? 'Tocar para editar el número' : 'Tocar para tomar pedido' }}
+    </p>
 
-    <p v-if="ocupada && !listaCompleta" class="text-xs text-cafe-400">
+    <p v-if="pedido" class="text-xs text-cafe-400">
       {{ pedido.productos.length }} producto(s)
     </p>
   </button>

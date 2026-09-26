@@ -102,7 +102,7 @@ export function normalizeProductType(value) {
 
 export function normalizeTableStatus(value) {
   const status = typeof value === 'string' ? value.trim().toLowerCase() : ''
-  const allowed = new Set(['libre', 'ocupada', 'reservada'])
+  const allowed = new Set(['libre', 'sin_atender', 'atendida', 'reservada'])
   if (!allowed.has(status)) throw badRequest('Table status is invalid')
   return status
 }

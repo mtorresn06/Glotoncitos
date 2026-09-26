@@ -7,6 +7,7 @@ DROP TABLE IF EXISTS pedidos CASCADE;
 DROP TABLE IF EXISTS productos CASCADE;
 DROP TABLE IF EXISTS categorias CASCADE;
 DROP TABLE IF EXISTS mesas CASCADE;
+DROP TABLE IF EXISTS pisos CASCADE;
 DROP TABLE IF EXISTS usuarios CASCADE;
 DROP TABLE IF EXISTS roles CASCADE;
 DROP TABLE IF EXISTS restaurantes CASCADE;
@@ -45,18 +46,34 @@ CREATE TABLE usuarios (
     CONSTRAINT usuarios_id_usuario_restaurante_unique UNIQUE (id_usuario, id_restaurante)
 );
 
+CREATE TABLE pisos (
+    id_piso uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_restaurante uuid NOT NULL REFERENCES restaurantes(id_restaurante) ON DELETE CASCADE,
+    numero integer NOT NULL CHECK (numero > 0),
+    creado_en timestamptz NOT NULL DEFAULT now(),
+    actualizado_en timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT pisos_id_piso_restaurante_unique UNIQUE (id_piso, id_restaurante),
+    CONSTRAINT pisos_numero_restaurante_unique UNIQUE (id_restaurante, numero)
+);
+
 CREATE TABLE mesas (
     id_mesa uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     id_restaurante uuid NOT NULL REFERENCES restaurantes(id_restaurante) ON DELETE CASCADE,
+    id_piso uuid NOT NULL,
     numero integer NOT NULL CHECK (numero > 0),
     capacidad integer NOT NULL DEFAULT 1 CHECK (capacidad > 0),
     estado text NOT NULL DEFAULT 'libre'
-        CHECK (estado IN ('libre', 'ocupada', 'reservada')),
+        CHECK (estado IN ('libre', 'sin_atender', 'atendida', 'reservada')),
     ocupada_desde timestamptz,
+    ocupada_personas integer CHECK (ocupada_personas IS NULL OR ocupada_personas > 0),
     creado_en timestamptz NOT NULL DEFAULT now(),
     actualizado_en timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT mesas_id_mesa_restaurante_unique UNIQUE (id_mesa, id_restaurante),
-    CONSTRAINT mesas_numero_restaurante_unique UNIQUE (id_restaurante, numero)
+    CONSTRAINT mesas_piso_restaurante_fk
+        FOREIGN KEY (id_piso, id_restaurante)
+        REFERENCES pisos(id_piso, id_restaurante)
+        ON DELETE RESTRICT,
+    CONSTRAINT mesas_numero_piso_restaurante_unique UNIQUE (id_restaurante, id_piso, numero)
 );
 
 CREATE TABLE categorias (
@@ -146,6 +163,8 @@ CREATE INDEX restaurantes_estado_idx ON restaurantes (estado_suscripcion);
 CREATE INDEX roles_codigo_idx ON roles (codigo);
 CREATE INDEX usuarios_restaurante_idx ON usuarios (id_restaurante);
 CREATE INDEX usuarios_rol_idx ON usuarios (id_rol);
+CREATE INDEX pisos_restaurante_idx ON pisos (id_restaurante, numero);
+CREATE INDEX mesas_piso_restaurante_idx ON mesas (id_restaurante, id_piso, numero);
 CREATE INDEX mesas_restaurante_estado_idx ON mesas (id_restaurante, estado);
 CREATE INDEX productos_restaurante_disponible_idx ON productos (id_restaurante, disponible);
 CREATE INDEX productos_categoria_idx ON productos (id_categoria);

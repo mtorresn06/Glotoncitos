@@ -61,7 +61,7 @@ export async function createPayment({ orderId, method, userId, restaurantId }) {
     )
 
     await client.query(
-      `UPDATE mesas SET estado = 'libre', ocupada_desde = NULL, actualizado_en = now()
+      `UPDATE mesas SET estado = 'libre', ocupada_desde = NULL, ocupada_personas = NULL, actualizado_en = now()
        WHERE id_mesa = $1 AND id_restaurante = $2`,
       [orderRow.mesa_id, idRestaurant],
     )

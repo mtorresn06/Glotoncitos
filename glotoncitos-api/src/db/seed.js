@@ -201,15 +201,26 @@ async function seedRestaurant(client, restaurant, users) {
     )
   }
 
+  const resultadoPiso = await client.query(
+    `INSERT INTO pisos (id_restaurante, numero)
+     VALUES ($1, 1)
+     ON CONFLICT (id_restaurante, numero) DO UPDATE SET actualizado_en = now()
+     RETURNING id_piso`,
+    [restaurantId],
+  )
+  const idPiso = resultadoPiso.rows[0].id_piso
+
   for (const table of BASE_TABLES) {
     await client.query(
-      `INSERT INTO mesas (id_restaurante, numero, capacidad, estado)
-       VALUES ($1, $2, $3, 'libre')
-       ON CONFLICT (id_restaurante, numero) DO UPDATE SET
+      `INSERT INTO mesas (id_restaurante, id_piso, numero, capacidad, estado)
+       VALUES ($1, $2, $3, $4, 'libre')
+       ON CONFLICT (id_restaurante, id_piso, numero) DO UPDATE SET
          capacidad = EXCLUDED.capacidad,
          estado = 'libre',
+         ocupada_desde = NULL,
+         ocupada_personas = NULL,
          actualizado_en = now()`,
-      [restaurantId, table.numero, table.capacidad],
+      [restaurantId, idPiso, table.numero, table.capacidad],
     )
   }
 
