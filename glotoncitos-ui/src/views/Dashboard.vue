@@ -384,7 +384,7 @@ async function eliminarTrabajador(id) {
             </div>
             <button v-if="esAdmin" @click="abrirGestionMenu"
               class="rounded-lg bg-cafe-700 px-3 py-2 text-xs font-bold text-crema-50 shadow hover:bg-cafe-800 cursor-pointer">
-              {{ menuGestionAbierto ? 'Ocultar menú' : 'Modificar menú' }}
+              {{ menuGestionAbierto ? 'Ocultar menú' : 'Mostar menú' }}
             </button>
             <span v-else class="text-xs text-cafe-400 font-semibold">Solo administración</span>
           </div>
