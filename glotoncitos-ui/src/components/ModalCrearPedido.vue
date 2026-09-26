@@ -1,10 +1,11 @@
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useDatosStore } from '../stores/datos'
 import { formatearPrecio } from '../utils/formato'
 
 const props = defineProps({
   mesa: { type: Object, required: true },
+  agregando: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['confirmar', 'cerrar'])
@@ -12,10 +13,25 @@ const emit = defineEmits(['confirmar', 'cerrar'])
 const datos = useDatosStore()
 
 const seleccion = reactive({})
+const personas = ref(1)
+const busqueda = ref('')
+
+function normalizar(texto) {
+  return String(texto || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+const productosFiltrados = computed(() => {
+  const termino = normalizar(busqueda.value.trim())
+  if (!termino) return datos.menu
+  return datos.menu.filter((producto) => normalizar(producto.nombre).includes(termino))
+})
 
 const categorias = computed(() => {
   const lista = []
-  datos.menu.forEach((producto) => {
+  productosFiltrados.value.forEach((producto) => {
     if (!lista.includes(producto.categoria)) lista.push(producto.categoria)
   })
   return lista
@@ -58,7 +74,7 @@ function decrementar(productoId) {
 
 function confirmar() {
   if (!tieneItems.value) return
-  emit('confirmar', itemsSeleccionados.value)
+  emit('confirmar', { items: itemsSeleccionados.value, personas: Number(personas.value) })
 }
 </script>
 
@@ -70,10 +86,12 @@ function confirmar() {
     <div class="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-crema-50 shadow-2xl">
       <div class="flex items-center justify-between border-b border-crema-200 px-6 py-4">
         <div>
-          <h2 class="text-xl font-extrabold text-cafe-800">Nuevo pedido</h2>
-          <p class="text-sm text-cafe-500">
-            {{ mesa.nombre }} · Piso {{ mesa.piso }} · elige los productos del menú
-          </p>
+            <h2 class="text-xl font-extrabold text-cafe-800">
+              {{ agregando ? 'Agregar platos' : 'Nuevo pedido' }}
+            </h2>
+            <p class="text-sm text-cafe-500">
+              {{ mesa.nombre }} · Piso {{ mesa.piso }} · elige los productos del menú
+            </p>
         </div>
         <button
           type="button"
@@ -85,13 +103,30 @@ function confirmar() {
       </div>
 
       <div class="flex-1 overflow-y-auto px-6 py-4">
+        <div v-if="!agregando" class="mb-5">
+          <label class="mb-2 block text-sm font-semibold text-cafe-700" for="personas-mesa">Número de personas</label>
+          <input id="personas-mesa" v-model.number="personas" type="number" min="1" required class="w-32 rounded-lg border border-cafe-300 bg-white px-3 py-2 text-sm text-cafe-800" />
+        </div>
+        <div class="mb-5">
+          <label class="mb-2 block text-sm font-semibold text-cafe-700" for="busqueda-producto">Buscar producto</label>
+          <input
+            id="busqueda-producto"
+            v-model="busqueda"
+            type="search"
+            placeholder="Escribe el nombre del producto..."
+            class="w-full rounded-lg border border-cafe-300 bg-white px-3 py-2 text-sm text-cafe-800 placeholder-cafe-400"
+          />
+        </div>
+        <p v-if="categorias.length === 0" class="rounded-xl border border-dashed border-cafe-300 p-6 text-center text-sm text-cafe-500">
+          No se encontraron productos.
+        </p>
         <section v-for="categoria in categorias" :key="categoria" class="mb-6">
           <h3 class="mb-3 text-xs font-bold uppercase tracking-widest text-cafe-400">
             {{ categoria }}
           </h3>
           <ul class="space-y-2">
             <li
-              v-for="producto in datos.menu.filter((p) => p.categoria === categoria)"
+              v-for="producto in productosFiltrados.filter((p) => p.categoria === categoria)"
               :key="producto.id"
               class="rounded-xl border border-cafe-900/10 bg-white p-3"
             >
@@ -160,7 +195,7 @@ function confirmar() {
             class="rounded-lg bg-cafe-700 px-4 py-2 text-sm font-bold text-crema-50 transition-colors enabled:hover:bg-cafe-800 disabled:cursor-not-allowed disabled:opacity-40"
             @click="confirmar"
           >
-            Enviar a cocina
+            {{ agregando ? 'Agregar a la orden' : 'Enviar a cocina' }}
           </button>
         </div>
       </div>
