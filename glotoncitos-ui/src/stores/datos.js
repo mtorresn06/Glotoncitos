@@ -16,6 +16,9 @@ import {
   agregarProductosPedido as apiAgregarProductosPedido,
   cancelarMesa as apiCancelarMesa,
   cambiarMesa as apiCambiarMesa,
+  getPedidosCocina,
+  marcarProductoListo as apiMarcarProductoListo,
+  confirmarPedidoListo as apiConfirmarPedidoListo,
   crearPedido as apiCrearPedido,
   avanzarProducto as apiAvanzarProducto,
   cancelarProducto as apiCancelarProducto,
@@ -47,6 +50,7 @@ export const useDatosStore = defineStore('datos', () => {
   const pisos = ref([])
   const pedidos = ref([])
   const pedidosListos = ref([])
+  const pedidosCocina = ref([])
   const pedidosCerrados = ref([])
   const trabajadores = ref([])
   const ventasBase = ref(0)
@@ -211,6 +215,30 @@ export const useDatosStore = defineStore('datos', () => {
     return response.pedido?.id
   }
 
+  async function cargarCocina() {
+    cargando.value = true
+    try {
+      pedidosCocina.value = await getPedidosCocina()
+      error.value = ''
+    } catch (e) {
+      error.value = e.message || 'Error al cargar los pedidos de cocina'
+    } finally {
+      cargando.value = false
+    }
+  }
+
+  async function marcarProductoListo(pedidoId, indice) {
+    const response = await apiMarcarProductoListo(pedidoId, indice)
+    await cargarCocina()
+    return response.pedido
+  }
+
+  async function confirmarPedidoListo(pedidoId) {
+    const response = await apiConfirmarPedidoListo(pedidoId)
+    await cargarCocina()
+    return response.pedido
+  }
+
   async function avanzarProducto(pedidoId, indice) {
     await apiAvanzarProducto(pedidoId, indice)
     await cargarDatos()
@@ -306,6 +334,7 @@ export const useDatosStore = defineStore('datos', () => {
     mesas,
     pedidos,
     pedidosListos,
+    pedidosCocina,
     pedidosCerrados,
     trabajadores,
     pisos,
@@ -332,7 +361,10 @@ export const useDatosStore = defineStore('datos', () => {
     totalPedido,
     pedidoCompleto,
     cargarDatos,
+    cargarCocina,
     cargarCaja,
+    marcarProductoListo,
+    confirmarPedidoListo,
     crearPiso,
     crearMesa,
     actualizarMesa,

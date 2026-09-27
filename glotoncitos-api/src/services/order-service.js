@@ -119,6 +119,75 @@ export async function listOrders(restaurantId, roleCode, userId) {
   return orders
 }
 
+export async function listKitchenOrders(restaurantId) {
+  const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
+  const result = await pool.query(
+    `SELECT p.id_pedido, p.id_restaurante, p.id_mesa, p.id_usuario, p.fecha_hora,
+            p.estado, p.actualizado_en, m.numero AS mesa_numero, m.estado AS mesa_estado,
+            u.nombre AS usuario_nombre,
+            COALESCE(SUM(dp.cantidad * dp.precio_unitario)
+              FILTER (WHERE dp.estado <> 'cancelado'), 0) AS total
+     FROM pedidos p
+     JOIN mesas m ON m.id_mesa = p.id_mesa AND m.id_restaurante = p.id_restaurante
+     JOIN usuarios u ON u.id_usuario = p.id_usuario AND u.id_restaurante = p.id_restaurante
+      LEFT JOIN detalles_pedido dp ON dp.id_pedido = p.id_pedido AND dp.id_restaurante = p.id_restaurante
+     WHERE p.id_restaurante = $1
+       AND p.estado NOT IN ('cerrado', 'cancelado')
+       AND m.estado <> 'atendida'
+     GROUP BY p.id_pedido, m.numero, m.estado, u.nombre
+     ORDER BY p.fecha_hora ASC`,
+    [idRestaurant],
+  )
+
+  const orders = []
+  for (const row of result.rows) {
+    orders.push({ ...formatOrder(row), items: await getDetails(row.id_pedido, idRestaurant) })
+  }
+  return orders
+}
+
+export async function confirmOrderReady({ orderId, restaurantId }) {
+  const idOrder = normalizeUuid(orderId, 'Order id')
+  const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+    const order = await client.query(
+      `SELECT estado FROM pedidos
+       WHERE id_pedido = $1 AND id_restaurante = $2 FOR UPDATE`,
+      [idOrder, idRestaurant],
+    )
+    if (order.rowCount === 0) throw notFound('Order not found')
+    if (order.rows[0].estado === 'cerrado' || order.rows[0].estado === 'cancelado') {
+      throw badRequest('La orden ya no está activa')
+    }
+
+    const items = await client.query(
+      `SELECT estado FROM detalles_pedido
+       WHERE id_pedido = $1 AND id_restaurante = $2 AND estado <> 'cancelado'`,
+      [idOrder, idRestaurant],
+    )
+    const faltantes = items.rows.filter((item) => item.estado !== 'listo').length
+    if (items.rowCount === 0) throw badRequest('La orden no tiene productos')
+    if (faltantes > 0) {
+      throw badRequest(`Faltan ${faltantes} producto(s) por marcar como listos`)
+    }
+
+    await client.query(
+      `UPDATE pedidos SET estado = 'listo', actualizado_en = now() WHERE id_pedido = $1`,
+      [idOrder],
+    )
+    await client.query('COMMIT')
+    return getOrder(idOrder, idRestaurant)
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
 export async function createOrder({ restaurantId, userId, mesaId, items, personas }) {
   const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
   const idUser = normalizeUuid(userId, 'User id')
@@ -211,16 +280,17 @@ async function recalculateOrderStatus(client, orderId) {
   const result = await client.query(
     `SELECT COUNT(*) AS total_count,
             COUNT(*) FILTER (WHERE estado = 'cancelado') AS canceled_count,
-            COUNT(*) FILTER (WHERE estado = 'listo') AS ready_count,
-            COUNT(*) FILTER (WHERE estado = 'en_preparacion') AS preparation_count
+            COUNT(*) FILTER (WHERE estado IN ('en_preparacion', 'listo')) AS started_count
      FROM detalles_pedido WHERE id_pedido = $1`,
     [orderId],
   )
   const counts = result.rows[0]
   let status = 'pendiente'
-  if (Number(counts.canceled_count) === Number(counts.total_count)) status = 'cancelado'
-  else if (Number(counts.ready_count) === Number(counts.total_count)) status = 'listo'
-  else if (Number(counts.preparation_count) > 0) status = 'en_preparacion'
+  if (Number(counts.total_count) > 0 && Number(counts.canceled_count) === Number(counts.total_count)) {
+    status = 'cancelado'
+  } else if (Number(counts.started_count) > 0) {
+    status = 'en_preparacion'
+  }
 
   await client.query(
     'UPDATE pedidos SET estado = $1, actualizado_en = now() WHERE id_pedido = $2',
@@ -347,7 +417,7 @@ export async function updateOrderItemStatus({ orderId, itemId, restaurantId, sta
   const idOrder = normalizeUuid(orderId, 'Order id')
   const idItem = normalizeUuid(itemId, 'Item id')
   const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
-  const allowed = { pendiente: ['en_preparacion'], en_preparacion: ['listo'], listo: [] }
+  const allowed = { pendiente: ['en_preparacion', 'listo'], en_preparacion: ['listo'], listo: [] }
   const normalizedStatus = status?.trim()?.toLowerCase()
   if (!Object.hasOwn(allowed, normalizedStatus)) throw badRequest('Item status is invalid')
 
@@ -355,11 +425,16 @@ export async function updateOrderItemStatus({ orderId, itemId, restaurantId, sta
   try {
     await client.query('BEGIN')
     const item = await client.query(
-      `SELECT estado FROM detalles_pedido
-       WHERE id_detalle = $1 AND id_restaurante = $2 FOR UPDATE`,
+      `SELECT dp.estado, p.estado AS pedido_estado
+       FROM detalles_pedido dp
+       JOIN pedidos p ON p.id_pedido = dp.id_pedido AND p.id_restaurante = dp.id_restaurante
+       WHERE dp.id_detalle = $1 AND dp.id_restaurante = $2 FOR UPDATE`,
       [idItem, idRestaurant],
     )
     if (item.rowCount === 0) throw notFound('Order item not found')
+    if (['listo', 'cerrado', 'cancelado'].includes(item.rows[0].pedido_estado)) {
+      throw badRequest('La orden ya está confirmada y no se puede modificar')
+    }
     if (!allowed[item.rows[0].estado].includes(normalizedStatus)) {
       throw badRequest('Item status transition is invalid')
     }

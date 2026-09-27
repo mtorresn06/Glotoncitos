@@ -22,6 +22,8 @@ import {
   updateOrderItem,
   updateOrderItemStatus,
   addOrderItems,
+  listKitchenOrders,
+  confirmOrderReady,
 } from '../services/order-service.js'
 import { createPayment, listPayments, revertPayment } from '../services/payment-service.js'
 import {
@@ -221,6 +223,33 @@ router.post('/mesas/:id/cambiar-mesa', authenticateToken, requireMesero, asyncRo
     restaurantId: req.auth.restaurantId,
   })
   res.json({ mesa: formatFrontendTable(table) })
+}))
+
+router.get('/cocina/pedidos', authenticateToken, requireCocina, asyncRoute(async (req, res) => {
+  const orders = await listKitchenOrders(req.auth.restaurantId)
+  res.json(orders.map(formatFrontendOrder))
+}))
+
+router.patch('/cocina/pedidos/:id/items/:indice', authenticateToken, requireCocina, asyncRoute(async (req, res) => {
+  const { id, indice } = req.params
+  const index = Number(indice)
+  if (!Number.isInteger(index) || index < 0) throw new HttpError(400, 'BAD_REQUEST', 'Índice inválido')
+  const { itemId } = await getOrderByIndex(id, req.auth.restaurantId, index)
+  const result = await updateOrderItemStatus({
+    orderId: id,
+    itemId,
+    restaurantId: req.auth.restaurantId,
+    status: 'listo',
+  })
+  res.json({ pedido: formatFrontendOrder(result) })
+}))
+
+router.post('/cocina/pedidos/:id/listo', authenticateToken, requireCocina, asyncRoute(async (req, res) => {
+  const result = await confirmOrderReady({
+    orderId: req.params.id,
+    restaurantId: req.auth.restaurantId,
+  })
+  res.json({ pedido: formatFrontendOrder(result) })
 }))
 
 router.get('/pedidos', authenticateToken, requireRoles('mesero', 'cajero', 'admin'), asyncRoute(async (req, res) => {

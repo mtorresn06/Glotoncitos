@@ -113,6 +113,22 @@ export function cambiarMesa(id, idMesaDestino) {
   })
 }
 
+export function getPedidosCocina() {
+  return request('/cocina/pedidos')
+}
+
+export function marcarProductoListo(pedidoId, indice) {
+  return request(`/cocina/pedidos/${pedidoId}/items/${indice}`, {
+    method: 'PATCH',
+  })
+}
+
+export function confirmarPedidoListo(pedidoId) {
+  return request(`/cocina/pedidos/${pedidoId}/listo`, {
+    method: 'POST',
+  })
+}
+
 export function getPedidos() {
   return request('/pedidos')
 }
