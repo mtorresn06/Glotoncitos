@@ -147,18 +147,20 @@ CREATE TABLE pagos (
     id_pago uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     id_pedido uuid NOT NULL REFERENCES pedidos(id_pedido) ON DELETE RESTRICT,
     total numeric(12, 2) NOT NULL CHECK (total >= 0),
-    metodo_pago text NOT NULL CHECK (metodo_pago IN ('efectivo', 'transferencia')),
+    metodo_pago text NOT NULL CHECK (metodo_pago IN ('efectivo', 'transferencia', 'qr', 'datafono')),
     estado text NOT NULL DEFAULT 'pagado'
-        CHECK (estado IN ('pagado', 'fallido')),
+        CHECK (estado IN ('pagado', 'fallido', 'revertido')),
     fecha timestamptz NOT NULL DEFAULT now(),
     id_usuario uuid REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
-    creado_en timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT pagos_pedido_unique UNIQUE (id_pedido)
+    creado_en timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE UNIQUE INDEX pedidos_mesa_activa_unique
     ON pedidos (id_mesa)
     WHERE estado NOT IN ('cerrado', 'cancelado');
+CREATE UNIQUE INDEX pagos_pedido_activo_unique
+    ON pagos (id_pedido)
+    WHERE estado <> 'revertido';
 CREATE INDEX restaurantes_estado_idx ON restaurantes (estado_suscripcion);
 CREATE INDEX roles_codigo_idx ON roles (codigo);
 CREATE INDEX usuarios_restaurante_idx ON usuarios (id_restaurante);
