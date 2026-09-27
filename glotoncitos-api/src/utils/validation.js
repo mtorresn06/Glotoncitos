@@ -123,7 +123,7 @@ export function normalizeDetailStatus(value) {
 
 export function normalizePaymentMethod(value) {
   const method = typeof value === 'string' ? value.trim().toLowerCase() : ''
-  if (!['efectivo', 'transferencia'].includes(method)) {
+  if (!['efectivo', 'transferencia', 'qr', 'datafono'].includes(method)) {
     throw badRequest('Payment method is invalid')
   }
   return method

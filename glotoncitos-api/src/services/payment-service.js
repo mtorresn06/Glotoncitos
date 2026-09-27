@@ -6,7 +6,10 @@ export function formatPayment(row) {
   return {
     id: row.id_pago,
     orderId: row.id_pedido,
+    mesaId: row.id_mesa ?? null,
+    mesaNombre: row.mesa_numero ? String(row.mesa_numero) : '',
     total: Number(row.total),
+    metodo: row.metodo_pago,
     method: row.metodo_pago,
     status: row.estado,
     date: row.fecha,
@@ -27,7 +30,8 @@ export async function createPayment({ orderId, method, userId, restaurantId }) {
 
     const order = await client.query(
       `SELECT p.id_pedido, p.id_restaurante, p.id_mesa, p.id_usuario, p.fecha_hora,
-              p.estado, p.actualizado_en, m.numero AS mesa_numero, m.id_mesa AS mesa_id
+              p.estado, p.actualizado_en, m.numero AS mesa_numero, m.id_mesa AS mesa_id,
+              m.estado AS mesa_estado
        FROM pedidos p
        JOIN mesas m ON m.id_mesa = p.id_mesa AND m.id_restaurante = p.id_restaurante
        WHERE p.id_pedido = $1 AND p.id_restaurante = $2 FOR UPDATE`,
@@ -38,6 +42,9 @@ export async function createPayment({ orderId, method, userId, restaurantId }) {
     const orderRow = order.rows[0]
     if (orderRow.estado !== 'listo') {
       throw badRequest('Order is not ready for payment')
+    }
+    if (orderRow.mesa_estado !== 'atendida') {
+      throw badRequest('La mesa todavía no está atendida por el mesero')
     }
 
     const detailsResult = await client.query(
@@ -54,7 +61,6 @@ export async function createPayment({ orderId, method, userId, restaurantId }) {
        RETURNING id_pago, id_pedido, total, metodo_pago, estado, fecha, id_usuario, creado_en`,
       [idOrder, authoritativeTotal, normalizedMethod, idUser],
     )
-
     await client.query(
       "UPDATE pedidos SET estado = 'cerrado', actualizado_en = now() WHERE id_pedido = $1",
       [idOrder],
@@ -69,7 +75,11 @@ export async function createPayment({ orderId, method, userId, restaurantId }) {
     await client.query('COMMIT')
 
     return {
-      payment: formatPayment(paymentResult.rows[0]),
+      payment: formatPayment({
+        ...paymentResult.rows[0],
+        id_mesa: orderRow.mesa_id,
+        mesa_numero: orderRow.mesa_numero,
+      }),
       order: {
         id: orderRow.id_pedido,
         restaurantId: orderRow.id_restaurante,
@@ -81,6 +91,63 @@ export async function createPayment({ orderId, method, userId, restaurantId }) {
         createdAt: orderRow.fecha_hora,
         updatedAt: orderRow.actualizado_en,
         total: authoritativeTotal,
+      },
+    }
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+export async function revertPayment({ paymentId, restaurantId }) {
+  const idPayment = normalizeUuid(paymentId, 'Payment id')
+  const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+    const payment = await client.query(
+      `SELECT pg.id_pago, pg.id_pedido, pg.estado AS pago_estado, pg.total,
+              pg.metodo_pago, pg.fecha, pg.id_usuario, pg.creado_en,
+              p.id_mesa, p.estado AS pedido_estado, m.numero AS mesa_numero
+       FROM pagos pg
+       JOIN pedidos p ON p.id_pedido = pg.id_pedido
+       JOIN mesas m ON m.id_mesa = p.id_mesa AND m.id_restaurante = p.id_restaurante
+       WHERE pg.id_pago = $1 AND p.id_restaurante = $2
+       FOR UPDATE`,
+      [idPayment, idRestaurant],
+    )
+    if (payment.rowCount === 0) throw notFound('Pago no encontrado')
+
+    const row = payment.rows[0]
+    if (row.pago_estado === 'revertido') throw badRequest('El pago ya fue revertido')
+    if (row.pedido_estado !== 'cerrado') throw badRequest('El pago no corresponde a una cuenta cerrada')
+
+    const updated = await client.query(
+      `UPDATE pagos SET estado = 'revertido'
+       WHERE id_pago = $1
+       RETURNING id_pago, id_pedido, total, metodo_pago, estado, fecha, id_usuario, creado_en`,
+      [idPayment],
+    )
+    await client.query(
+      "UPDATE pedidos SET estado = 'listo', actualizado_en = now() WHERE id_pedido = $1",
+      [row.id_pedido],
+    )
+    await client.query(
+      `UPDATE mesas SET estado = 'atendida', actualizado_en = now()
+       WHERE id_mesa = $1 AND id_restaurante = $2`,
+      [row.id_mesa, idRestaurant],
+    )
+
+    await client.query('COMMIT')
+    return {
+      payment: formatPayment({ ...updated.rows[0], id_mesa: row.id_mesa, mesa_numero: row.mesa_numero }),
+      order: {
+        id: row.id_pedido,
+        table: { id: row.id_mesa, number: row.mesa_numero },
+        status: 'listo',
       },
     }
   } catch (error) {
@@ -116,9 +183,10 @@ export async function listPayments({ restaurantId, dateFrom, dateTo, method }) {
 
   const result = await pool.query(
     `SELECT pg.id_pago, pg.id_pedido, pg.total, pg.metodo_pago, pg.estado, pg.fecha,
-            pg.id_usuario, pg.creado_en
+            pg.id_usuario, pg.creado_en, p.id_mesa, m.numero AS mesa_numero
      FROM pagos pg
      JOIN pedidos p ON p.id_pedido = pg.id_pedido
+     JOIN mesas m ON m.id_mesa = p.id_mesa AND m.id_restaurante = p.id_restaurante
      WHERE ${whereClause}
      ORDER BY pg.fecha DESC`,
     params,

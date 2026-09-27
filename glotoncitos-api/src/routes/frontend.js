@@ -23,7 +23,7 @@ import {
   updateOrderItemStatus,
   addOrderItems,
 } from '../services/order-service.js'
-import { createPayment, listPayments } from '../services/payment-service.js'
+import { createPayment, listPayments, revertPayment } from '../services/payment-service.js'
 import {
   getSalesByDate,
   getSalesSummary,
@@ -337,7 +337,38 @@ router.post('/pagos', authenticateToken, requireRoles('cajero', 'admin'), asyncR
     userId: req.auth.userId,
     restaurantId: req.auth.restaurantId,
   })
-  res.status(201).json({ pago: payment.payment, pedido: payment.order })
+  res.status(201).json({
+    pago: {
+      id: payment.payment.id,
+      pedidoId: payment.payment.orderId,
+      mesaId: payment.payment.mesaId,
+      mesaNombre: payment.payment.mesaNombre,
+      total: payment.payment.total,
+      metodo: payment.payment.method,
+      estado: payment.payment.status,
+      fecha: payment.payment.date,
+    },
+    pedido: payment.order,
+  })
+}))
+
+router.post('/pagos/:id/revertir', authenticateToken, requireRoles('cajero', 'admin'), asyncRoute(async (req, res) => {
+  const result = await revertPayment({
+    paymentId: req.params.id,
+    restaurantId: req.auth.restaurantId,
+  })
+  res.json({
+    pago: {
+      id: result.payment.id,
+      pedidoId: result.payment.orderId,
+      mesaId: result.payment.mesaId,
+      mesaNombre: result.payment.mesaNombre,
+      total: result.payment.total,
+      metodo: result.payment.method,
+      estado: result.payment.status,
+      fecha: result.payment.date,
+    },
+  })
 }))
 
 router.get('/pagos', authenticateToken, requireRoles('cajero', 'admin'), asyncRoute(async (req, res) => {
@@ -348,7 +379,18 @@ router.get('/pagos', authenticateToken, requireRoles('cajero', 'admin'), asyncRo
     dateTo: query.dateTo || query.fecha_hasta || null,
     method: query.method || query.metodo_pago || null,
   })
-  res.json({ pagos: payments })
+  res.json({
+    pagos: payments.map((pago) => ({
+      id: pago.id,
+      pedidoId: pago.orderId,
+      mesaId: pago.mesaId,
+      mesaNombre: pago.mesaNombre,
+      total: pago.total,
+      metodo: pago.method,
+      estado: pago.status,
+      fecha: pago.date,
+    })),
+  })
 }))
 
 router.get('/reportes/ventas-resumen', authenticateToken, requireAdmin, asyncRoute(async (req, res) => {

@@ -158,10 +158,24 @@ export function actualizarProducto(pedidoId, indice, datos) {
   })
 }
 
-export function registrarPago(pedidoId) {
+export function registrarPago(pedidoId, metodo) {
   return request('/pagos', {
     method: 'POST',
-    body: { pedidoId },
+    body: { pedidoId, method: metodo },
+  })
+}
+
+export function getPagos({ desde, hasta } = {}) {
+  const query = new URLSearchParams()
+  if (desde) query.set('dateFrom', desde)
+  if (hasta) query.set('dateTo', hasta)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/pagos${suffix}`)
+}
+
+export function revertirPago(id) {
+  return request(`/pagos/${id}/revertir`, {
+    method: 'POST',
   })
 }
 

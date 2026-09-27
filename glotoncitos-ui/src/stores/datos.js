@@ -21,7 +21,24 @@ import {
   cancelarProducto as apiCancelarProducto,
   actualizarProducto as apiActualizarProducto,
   registrarPago as apiRegistrarPago,
+  getPagos,
+  revertirPago as apiRevertirPago,
 } from '../services/api.js'
+
+function hoyEnLocal() {
+  const hoy = new Date()
+  const mes = String(hoy.getMonth() + 1).padStart(2, '0')
+  const dia = String(hoy.getDate()).padStart(2, '0')
+  return `${hoy.getFullYear()}-${mes}-${dia}`
+}
+
+function rangoDelDia(fecha) {
+  const dia = fecha || hoyEnLocal()
+  return {
+    desde: new Date(`${dia}T00:00:00`).toISOString(),
+    hasta: new Date(`${dia}T23:59:59.999`).toISOString(),
+  }
+}
 
 export const useDatosStore = defineStore('datos', () => {
   const sesion = useSesionStore()
@@ -36,6 +53,25 @@ export const useDatosStore = defineStore('datos', () => {
 
   const cargando = ref(false)
   const error = ref('')
+  const reloj = ref(Date.now())
+  const pagos = ref([])
+  const fechaPagos = ref(hoyEnLocal())
+
+  const CLAVE_RELOJ = '__glotoncitosReloj'
+
+  function iniciarReloj() {
+    detenerReloj()
+    globalThis[CLAVE_RELOJ] = setInterval(() => {
+      reloj.value = Date.now()
+    }, 1000)
+  }
+
+  function detenerReloj() {
+    if (globalThis[CLAVE_RELOJ]) {
+      clearInterval(globalThis[CLAVE_RELOJ])
+      globalThis[CLAVE_RELOJ] = null
+    }
+  }
 
   function mesaPorId(id) {
     return mesas.value.find((m) => m.id === id) || null
@@ -190,14 +226,59 @@ export const useDatosStore = defineStore('datos', () => {
     await cargarDatos()
   }
 
-  async function registrarPago(pedidoId) {
-    await apiRegistrarPago(pedidoId)
-    await cargarDatos()
+  async function cargarCaja(fecha) {
+    cargando.value = true
+    try {
+      const [mesasData, pisosData, pedidosData, pagosData] = await Promise.all([
+        getMesas(),
+        getPisos(),
+        getPedidos(),
+        getPagos(rangoDelDia(fecha)),
+      ])
+      mesas.value = mesasData
+      pisos.value = pisosData
+      pedidos.value = pedidosData
+      pagos.value = Array.isArray(pagosData) ? pagosData : pagosData?.pagos || []
+      error.value = ''
+    } catch (e) {
+      error.value = e.message || 'Error al cargar los datos de caja'
+    } finally {
+      cargando.value = false
+    }
+  }
+
+  async function registrarPago(pedidoId, metodo) {
+    const response = await apiRegistrarPago(pedidoId, metodo)
+    await cargarCaja(fechaPagos.value)
+    return response.pago
+  }
+
+  async function revertirPago(pagoId) {
+    const response = await apiRevertirPago(pagoId)
+    await cargarCaja(fechaPagos.value)
+    return response.pago
   }
 
   const mesasPorPiso = (piso) => mesas.value.filter((m) => m.piso === piso)
 
   const mesasOcupadas = computed(() => mesas.value.filter((m) => m.estado === 'ocupada'))
+  const mesasConCuenta = computed(() =>
+    mesas.value.filter((mesa) => pedidoDeMesa(mesa.id)),
+  )
+
+  const pagosDelDia = computed(() => pagos.value.filter((pago) => pago.estado === 'pagado'))
+
+  const totalesPorMetodo = computed(() => {
+    const totales = {}
+    pagosDelDia.value.forEach((pago) => {
+      totales[pago.metodo] = (totales[pago.metodo] || 0) + Number(pago.total)
+    })
+    return totales
+  })
+
+  const totalCobradoDia = computed(() =>
+    pagosDelDia.value.reduce((suma, pago) => suma + Number(pago.total), 0),
+  )
 
   const mesasLibres = computed(() => mesas.value.filter((m) => m.estado === 'libre'))
 
@@ -229,19 +310,29 @@ export const useDatosStore = defineStore('datos', () => {
     trabajadores,
     pisos,
     mesasPorPiso,
+    mesasConCuenta,
     mesasOcupadas,
     mesasLibres,
+    pagos,
+    fechaPagos,
+    pagosDelDia,
+    totalesPorMetodo,
+    totalCobradoDia,
     ventasDelDia,
     numeroPedidos,
     platosMasPedidos,
     cargando,
     error,
+    reloj,
+    iniciarReloj,
+    detenerReloj,
     mesaPorId,
     pedidoDeMesa,
     totalDeMesa,
     totalPedido,
     pedidoCompleto,
     cargarDatos,
+    cargarCaja,
     crearPiso,
     crearMesa,
     actualizarMesa,
@@ -255,5 +346,6 @@ export const useDatosStore = defineStore('datos', () => {
     cancelarProducto,
     actualizarProducto,
     registrarPago,
+    revertirPago,
   }
 })
