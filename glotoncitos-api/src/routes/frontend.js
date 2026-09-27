@@ -13,8 +13,9 @@ import {
   updateTableStatus,
   cancelarMesa,
   cambiarMesaOrden,
+  eliminarMesa,
 } from '../services/table-service.js'
-import { crearPiso, listarPisos } from '../services/piso-service.js'
+import { crearPiso, listarPisos, eliminarPiso } from '../services/piso-service.js'
 import {
   listOrders,
   getOrder,
@@ -170,6 +171,11 @@ router.post('/pisos', authenticateToken, requireAdmin, asyncRoute(async (req, re
   res.status(201).json({ piso: { id: piso.id, nombre: String(piso.numero), numero: piso.numero } })
 }))
 
+router.delete('/pisos/:id', authenticateToken, requireAdmin, asyncRoute(async (req, res) => {
+  const piso = await eliminarPiso(req.params.id, req.auth.restaurantId)
+  res.json({ piso: { id: piso.id }, mensaje: 'Piso eliminado correctamente' })
+}))
+
 router.get('/mesas', authenticateToken, asyncRoute(async (req, res) => {
   const tables = await listTables(req.auth.restaurantId)
   res.json(tables.map(formatFrontendTable))
@@ -208,6 +214,11 @@ router.patch('/mesas/:id/estado', authenticateToken, requireMesero, asyncRoute(a
     req.body?.estado,
   )
   res.json({ mesa: formatFrontendTable(table) })
+}))
+
+router.delete('/mesas/:id', authenticateToken, requireAdmin, asyncRoute(async (req, res) => {
+  const mesa = await eliminarMesa(req.params.id, req.auth.restaurantId)
+  res.json({ mesa: { id: mesa.id }, mensaje: 'Mesa eliminada correctamente' })
 }))
 
 router.post('/mesas/:id/cancelar', authenticateToken, requireMesero, asyncRoute(async (req, res) => {

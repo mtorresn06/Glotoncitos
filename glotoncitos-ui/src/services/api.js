@@ -81,6 +81,18 @@ export function crearPiso(datos) {
   })
 }
 
+export function eliminarPiso(id) {
+  return request(`/pisos/${id}`, {
+    method: 'DELETE',
+  })
+}
+
+export function eliminarMesa(id) {
+  return request(`/mesas/${id}`, {
+    method: 'DELETE',
+  })
+}
+
 export function crearMesa(datos) {
   return request('/mesas', {
     method: 'POST',

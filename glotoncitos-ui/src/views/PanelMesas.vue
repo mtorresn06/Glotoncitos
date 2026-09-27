@@ -29,8 +29,8 @@ const mesaDestinoId = ref('')
 const errorPedido = ref('')
 const esAdmin = computed(() => sesion.rolId === 'administrador')
 const esMesero = computed(() => sesion.rolId === 'mesero')
-const ahora = ref(Date.now())
-let temporizador
+const ahora = computed(() => datos.reloj)
+let consulta
 let ultimoAviso = 0
 
 function reproducirAviso() {
@@ -53,11 +53,11 @@ function reproducirAviso() {
 onMounted(async () => {
   await datos.cargarDatos()
   ultimoAviso = datos.mesas.filter((mesa) => mesa.pedidoListo && mesa.estado === 'sin_atender').length
-  temporizador = setInterval(async () => {
-    ahora.value = Date.now()
-    if (!esMesero.value) return
+  datos.iniciarReloj()
+  consulta = setInterval(async () => {
     try {
       await datos.cargarMesas()
+      if (!esMesero.value) return
       const nuevosAvisos = datos.mesas.filter((mesa) => mesa.pedidoListo && mesa.estado === 'sin_atender').length
       if (nuevosAvisos > ultimoAviso) reproducirAviso()
       ultimoAviso = nuevosAvisos
@@ -67,9 +67,13 @@ onMounted(async () => {
   }, 5000)
 })
 
-onBeforeUnmount(() => clearInterval(temporizador))
+onBeforeUnmount(() => {
+  clearInterval(consulta)
+  datos.detenerReloj()
+})
 
 const mesasDelPiso = computed(() => datos.mesasPorPiso(pisoActivo.value))
+const mesasDelPisoPorNumero = (numero) => datos.mesasPorPiso(numero)
 const disponiblesDelPiso = computed(() => mesasDelPiso.value.filter((m) => m.estado === 'libre').length)
 const sinAtenderDelPiso = computed(() => mesasDelPiso.value.filter((m) => m.estado === 'sin_atender').length)
 const mesasListas = computed(() =>
@@ -162,6 +166,42 @@ async function cancelarMesaActual() {
     errorPedido.value = error.message || 'No se pudo cancelar la mesa'
   } finally {
     guardandoCancelacion.value = false
+  }
+}
+
+async function eliminarMesaActual() {
+  const mesa = modalDetalle.value
+  const confirmado = window.confirm(`¿Eliminar la mesa ${mesa.nombre}? Esta acción no se puede deshacer.`)
+  if (!confirmado) return
+  errorGestion.value = ''
+  guardando.value = true
+  try {
+    await datos.eliminarMesa(mesa.id)
+    modalDetalle.value = null
+  } catch (error) {
+    errorGestion.value = error.message || 'No se pudo eliminar la mesa'
+  } finally {
+    guardando.value = false
+  }
+}
+
+async function eliminarPisoActual(piso) {
+  const mesas = mesasDelPisoPorNumero(piso.numero)
+  if (mesas.length > 0) {
+    errorGestion.value = `El piso ${piso.numero} tiene ${mesas.length} mesa(s); elimínalas antes de eliminar el piso`
+    return
+  }
+  const confirmado = window.confirm(`¿Eliminar el piso ${piso.numero}?`)
+  if (!confirmado) return
+  errorGestion.value = ''
+  guardando.value = true
+  try {
+    await datos.eliminarPiso(piso.id)
+    if (pisoActivo.value === piso.numero) pisoActivo.value = datos.pisos[0]?.numero || 1
+  } catch (error) {
+    errorGestion.value = error.message || 'No se pudo eliminar el piso'
+  } finally {
+    guardando.value = false
   }
 }
 
@@ -312,21 +352,31 @@ async function guardarMesa() {
         {{ errorPedido }}
       </p>
 
-      <div class="mb-5 flex gap-2">
-        <button
-          v-for="piso in datos.pisos"
-          :key="piso.id"
-          type="button"
-          class="rounded-xl px-5 py-2 text-sm font-bold transition-colors"
-          :class="
-             pisoActivo === piso.numero
-               ? 'bg-cafe-700 text-crema-50 shadow'
-               : 'border border-cafe-900/10 bg-white text-cafe-600 hover:bg-crema-200'
-          "
-           @click="pisoActivo = piso.numero"
-         >
-           Piso {{ piso.numero }}
-        </button>
+      <div class="mb-5 flex flex-wrap gap-2">
+        <div v-for="piso in datos.pisos" :key="piso.id" class="flex items-center gap-1">
+          <button
+            type="button"
+            class="rounded-xl px-5 py-2 text-sm font-bold transition-colors"
+            :class="
+               pisoActivo === piso.numero
+                 ? 'bg-cafe-700 text-crema-50 shadow'
+                 : 'border border-cafe-900/10 bg-white text-cafe-600 hover:bg-crema-200'
+            "
+             @click="pisoActivo = piso.numero"
+           >
+             Piso {{ piso.numero }}
+          </button>
+          <button
+            v-if="esAdmin"
+            type="button"
+            :title="mesasDelPisoPorNumero(piso.numero).length > 0 ? 'El piso tiene mesas' : 'Eliminar piso'"
+            :disabled="mesasDelPisoPorNumero(piso.numero).length > 0"
+            class="rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:border-crema-200 disabled:bg-crema-100 disabled:text-cafe-300"
+            @click="eliminarPisoActual(piso)"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
@@ -482,6 +532,19 @@ async function guardarMesa() {
               >
                 {{ guardandoMesa ? 'Guardando...' : 'Guardar número' }}
               </button>
+            </div>
+            <div class="mt-3 border-t border-crema-100 pt-3">
+              <button
+                type="button"
+                :disabled="guardando"
+                class="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+                @click="eliminarMesaActual"
+              >
+                {{ guardando ? 'Eliminando...' : 'Eliminar mesa' }}
+              </button>
+              <p v-if="datos.pedidoDeMesa(modalDetalle.id)" class="mt-2 text-xs text-cafe-500">
+                La mesa tiene una cuenta abierta: primero cobra o cancela la mesa.
+              </p>
             </div>
             <p v-if="errorGestion" class="mt-2 text-sm text-red-700">{{ errorGestion }}</p>
           </form>

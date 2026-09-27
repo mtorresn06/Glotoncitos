@@ -316,6 +316,49 @@ export async function deleteTable(tableId, restaurantId) {
   }
 }
 
+export async function eliminarMesa(mesaId, restaurantId) {
+  const id = normalizeUuid(mesaId, 'Id de mesa')
+  const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+    const mesa = await client.query(
+      'SELECT id_mesa FROM mesas WHERE id_mesa = $1 AND id_restaurante = $2 FOR UPDATE',
+      [id, idRestaurant],
+    )
+    if (mesa.rowCount === 0) throw notFound('Mesa no encontrada')
+
+    const activa = await client.query(
+      `SELECT 1 FROM pedidos
+       WHERE id_mesa = $1 AND id_restaurante = $2 AND estado NOT IN ('cerrado', 'cancelado')
+       LIMIT 1`,
+      [id, idRestaurant],
+    )
+    if (activa.rowCount > 0) {
+      throw badRequest('La mesa tiene una cuenta abierta; cobrar o cancelar la mesa antes de eliminarla')
+    }
+
+    const historial = await client.query(
+      'SELECT COUNT(*) AS total FROM pedidos WHERE id_mesa = $1 AND id_restaurante = $2',
+      [id, idRestaurant],
+    )
+    if (Number(historial.rows[0].total) > 0) {
+      throw badRequest('La mesa tiene historial de pedidos y no se puede eliminar')
+    }
+
+    await client.query('DELETE FROM mesas WHERE id_mesa = $1 AND id_restaurante = $2', [id, idRestaurant])
+    await client.query('COMMIT')
+    return { id }
+  } catch (error) {
+    await client.query('ROLLBACK')
+    if (error?.code === '23503') throw conflict('La mesa está en uso')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
 export async function getTable(tableId, restaurantId) {
   const id = normalizeUuid(tableId, 'Table id')
   const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')

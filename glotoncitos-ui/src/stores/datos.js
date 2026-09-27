@@ -11,6 +11,8 @@ import {
   getPisos,
   crearPiso as apiCrearPiso,
   crearMesa as apiCrearMesa,
+  eliminarMesa as apiEliminarMesa,
+  eliminarPiso as apiEliminarPiso,
   actualizarMesa as apiActualizarMesa,
   cambiarEstadoMesa as apiCambiarEstadoMesa,
   agregarProductosPedido as apiAgregarProductosPedido,
@@ -146,6 +148,18 @@ export const useDatosStore = defineStore('datos', () => {
     const response = await apiCrearMesa({ numero, capacidad, idPiso })
     await cargarDatos()
     return response.mesa
+  }
+
+  async function eliminarMesa(idMesa) {
+    const response = await apiEliminarMesa(idMesa)
+    await cargarDatos()
+    return response
+  }
+
+  async function eliminarPiso(idPiso) {
+    const response = await apiEliminarPiso(idPiso)
+    await cargarDatos()
+    return response
   }
 
   async function actualizarMesa(idMesa, { numero }) {
@@ -289,9 +303,12 @@ export const useDatosStore = defineStore('datos', () => {
 
   const mesasPorPiso = (piso) => mesas.value.filter((m) => m.piso === piso)
 
-  const mesasOcupadas = computed(() => mesas.value.filter((m) => m.estado === 'ocupada'))
   const mesasConCuenta = computed(() =>
     mesas.value.filter((mesa) => pedidoDeMesa(mesa.id)),
+  )
+
+  const mesasOcupadas = computed(() =>
+    mesas.value.filter((m) => m.estado === 'sin_atender' || m.estado === 'atendida'),
   )
 
   const pagosDelDia = computed(() => pagos.value.filter((pago) => pago.estado === 'pagado'))
@@ -367,6 +384,8 @@ export const useDatosStore = defineStore('datos', () => {
     confirmarPedidoListo,
     crearPiso,
     crearMesa,
+    eliminarMesa,
+    eliminarPiso,
     actualizarMesa,
     cargarMesas,
     cambiarEstadoMesa,

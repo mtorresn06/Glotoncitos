@@ -1,5 +1,5 @@
 import { pool } from '../db/pool.js'
-import { conflict, notFound } from '../utils/errors.js'
+import { badRequest, conflict, notFound } from '../utils/errors.js'
 import { normalizePositiveInteger, normalizeUuid } from '../utils/validation.js'
 
 export function formatearPiso(fila) {
@@ -22,6 +22,39 @@ export async function listarPisos(idRestaurante) {
     [id],
   )
   return resultado.rows.map(formatearPiso)
+}
+
+export async function eliminarPiso(pisoId, idRestaurante) {
+  const id = normalizeUuid(pisoId, 'Id de piso')
+  const idLocal = normalizeUuid(idRestaurante, 'Id del restaurante')
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+    const piso = await client.query(
+      'SELECT id_piso FROM pisos WHERE id_piso = $1 AND id_restaurante = $2 FOR UPDATE',
+      [id, idLocal],
+    )
+    if (piso.rowCount === 0) throw notFound('Piso no encontrado')
+
+    const mesas = await client.query(
+      'SELECT COUNT(*) AS total FROM mesas WHERE id_piso = $1 AND id_restaurante = $2',
+      [id, idLocal],
+    )
+    if (Number(mesas.rows[0].total) > 0) {
+      throw badRequest('El piso tiene mesas; elimínalas antes de eliminar el piso')
+    }
+
+    await client.query('DELETE FROM pisos WHERE id_piso = $1 AND id_restaurante = $2', [id, idLocal])
+    await client.query('COMMIT')
+    return { id }
+  } catch (error) {
+    await client.query('ROLLBACK')
+    if (error?.code === '23503') throw conflict('El piso tiene mesas o registros asociados')
+    throw error
+  } finally {
+    client.release()
+  }
 }
 
 export async function crearPiso({ idRestaurante, numero }) {
