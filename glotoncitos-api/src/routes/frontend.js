@@ -4,6 +4,7 @@ import {
   createProduct,
   updateProduct,
   getProduct,
+  listCategories,
 } from '../services/menu-service.js'
 import {
   listTables,
@@ -50,9 +51,19 @@ function formatProductItem(producto) {
   return {
     id: producto.id,
     nombre: producto.name,
+    descripcion: producto.description ?? '',
     precio: Number(producto.price),
+    tipo: producto.type,
     categoria: producto.categoryName,
+    categoriaId: producto.categoryId,
     disponible: producto.available,
+  }
+}
+
+function formatCategoryItem(categoria) {
+  return {
+    id: categoria.id,
+    nombre: categoria.name,
   }
 }
 
@@ -122,6 +133,11 @@ async function getOrderByIndex(orderId, restaurantId, index) {
   if (index < 0 || index >= items.length) throw new HttpError(404, 'NOT_FOUND', 'Ítem no encontrado')
   return { order, item: items[index], itemId: items[index].id }
 }
+
+router.get('/categorias', authenticateToken, asyncRoute(async (_req, res) => {
+  const categories = await listCategories()
+  res.json(categories.map(formatCategoryItem))
+}))
 
 router.get('/productos', authenticateToken, asyncRoute(async (req, res) => {
   const availableOnly = req.query.availableOnly === 'true'

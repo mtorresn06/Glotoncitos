@@ -39,29 +39,29 @@ export function getProductos() {
 }
 
 export function getMenuProductos() {
-  return request('/menu/productos')
+  return request('/productos')
 }
 
 export function getMenuCategorias() {
-  return request('/menu/categorias')
+  return request('/categorias')
 }
 
 export function crearProductoMenu(datos) {
-  return request('/menu/productos', {
+  return request('/productos', {
     method: 'POST',
     body: datos,
   })
 }
 
 export function actualizarProductoMenu(id, datos) {
-  return request(`/menu/products/${id}`, {
+  return request(`/productos/${id}`, {
     method: 'PUT',
     body: datos,
   })
 }
 
 export function eliminarProductoMenu(id) {
-  return request(`/menu/productos/${id}`, {
+  return request(`/productos/${id}`, {
     method: 'DELETE',
   })
 }

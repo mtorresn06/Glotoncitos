@@ -96,12 +96,12 @@ const trabajadoresVisibles = computed(() => datos.trabajadores.filter(
 
 const opcionesFiltroMenu = computed(() => [
   { id: 'todas', name: 'Todas las categorías' },
-  ...menuCategorias.value,
+  ...menuCategorias.value.map((categoria) => ({ id: categoria.id, name: categoria.nombre })),
 ])
 
 const productosMenuFiltrados = computed(() => {
   if (menuFiltroCategoria.value === 'todas') return menuProductos.value
-  return menuProductos.value.filter((producto) => producto.categoryId === menuFiltroCategoria.value)
+  return menuProductos.value.filter((producto) => producto.categoriaId === menuFiltroCategoria.value)
 })
 
 const esEdicionProducto = computed(() => Boolean(productoEditandoId.value))
@@ -119,8 +119,8 @@ async function cargarMenuAdministracion() {
       getMenuCategorias(),
       getMenuProductos(),
     ])
-    menuCategorias.value = categorias.categories || []
-    menuProductos.value = productos.products || []
+    menuCategorias.value = categorias
+    menuProductos.value = productos
     if (!menuCategorias.value.some((categoria) => categoria.id === menuFiltroCategoria.value)) {
       menuFiltroCategoria.value = 'todas'
     }
@@ -148,12 +148,12 @@ function abrirProductoNuevo() {
 function abrirProductoEditar(producto) {
   productoEditandoId.value = producto.id
   productoForm.value = {
-    categoryId: producto.categoryId || '',
-    name: producto.name || '',
-    description: producto.description || '',
-    price: producto.price ?? '',
-    type: producto.type || 'plato',
-    available: Boolean(producto.available),
+    categoryId: producto.categoriaId || '',
+    name: producto.nombre || '',
+    description: producto.descripcion || '',
+    price: producto.precio ?? '',
+    type: producto.tipo || 'plato',
+    available: Boolean(producto.disponible),
   }
   menuError.value = ''
   menuModalAbierto.value = true
@@ -195,7 +195,7 @@ async function guardarProducto() {
 }
 
 async function eliminarProducto(producto) {
-  if (!confirm(`¿Eliminar "${producto.name}" del menú?`)) return
+  if (!confirm(`¿Eliminar "${producto.nombre}" del menú?`)) return
   try {
     await eliminarProductoMenu(producto.id)
     await Promise.all([cargarMenuAdministracion(), datos.cargarDatos()])
@@ -426,23 +426,23 @@ async function eliminarTrabajador(id) {
                 class="rounded-xl bg-white p-4 shadow-sm ring-1 ring-cafe-900/10">
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
-                    <h3 class="truncate text-sm font-extrabold text-cafe-800">{{ producto.name }}</h3>
-                    <p class="mt-1 text-xs font-semibold text-durazno-600">{{ producto.categoryName }}</p>
+                    <h3 class="truncate text-sm font-extrabold text-cafe-800">{{ producto.nombre }}</h3>
+                    <p class="mt-1 text-xs font-semibold text-durazno-600">{{ producto.categoria }}</p>
                   </div>
-                  <p class="flex-none text-sm font-extrabold text-cafe-700">{{ formatearPrecio(producto.price) }}</p>
+                  <p class="flex-none text-sm font-extrabold text-cafe-700">{{ formatearPrecio(producto.precio) }}</p>
                 </div>
 
                 <p class="mt-3 line-clamp-2 text-xs leading-5 text-cafe-500">
-                  {{ producto.description || 'Sin descripción' }}
+                  {{ producto.descripcion || 'Sin descripción' }}
                 </p>
 
                 <div class="mt-4 flex flex-wrap items-center gap-2">
                   <span class="rounded-full bg-cafe-100 px-2 py-0.5 text-[10px] font-bold uppercase text-cafe-700">
-                    {{ tiposProducto.find((tipo) => tipo.code === producto.type)?.name || producto.type }}
+                    {{ tiposProducto.find((tipo) => tipo.code === producto.tipo)?.name || producto.tipo }}
                   </span>
                   <span class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
-                    :class="producto.available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
-                    {{ producto.available ? 'Disponible' : 'No disponible' }}
+                    :class="producto.disponible ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+                    {{ producto.disponible ? 'Disponible' : 'No disponible' }}
                   </span>
                 </div>
 
@@ -537,7 +537,7 @@ async function eliminarTrabajador(id) {
                 class="w-full rounded-xl border border-cafe-900/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-cafe-500">
                 <option value="" disabled>Selecciona una categoría</option>
                 <option v-for="categoria in menuCategorias" :key="categoria.id" :value="categoria.id">
-                  {{ categoria.name }}
+                  {{ categoria.nombre }}
                 </option>
               </select>
             </div>
