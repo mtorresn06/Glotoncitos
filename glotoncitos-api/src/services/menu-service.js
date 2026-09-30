@@ -78,6 +78,72 @@ export async function deleteCategory(categoryId) {
   }
 }
 
+function normalizarNombreCategoria(nombre) {
+  if (typeof nombre !== 'string' || !nombre.trim()) {
+    throw badRequest('El nombre de la categoría es obligatorio')
+  }
+  const limpio = nombre.trim()
+  if (limpio.length > 60) throw badRequest('El nombre de la categoría no puede superar 60 caracteres')
+  return limpio
+}
+
+export async function crearCategoria({ nombre }) {
+  const normalizedName = normalizarNombreCategoria(nombre)
+  const result = await pool.query(
+    `INSERT INTO categorias (nombre)
+     VALUES ($1)
+     RETURNING id_categoria, nombre, creado_en, actualizado_en`,
+    [normalizedName],
+  )
+  return formatCategory(result.rows[0])
+}
+
+export async function actualizarCategoria(categoryId, { nombre }) {
+  const id = normalizeUuid(categoryId, 'Id de categoría')
+  const normalizedName = normalizarNombreCategoria(nombre)
+  const result = await pool.query(
+    `UPDATE categorias
+     SET nombre = $1, actualizado_en = now()
+     WHERE id_categoria = $2
+     RETURNING id_categoria, nombre, creado_en, actualizado_en`,
+    [normalizedName, id],
+  )
+  if (result.rowCount === 0) throw notFound('Categoría no encontrada')
+  return formatCategory(result.rows[0])
+}
+
+export async function eliminarCategoria(categoryId) {
+  const id = normalizeUuid(categoryId, 'Id de categoría')
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+    const categoria = await client.query(
+      'SELECT id_categoria FROM categorias WHERE id_categoria = $1 FOR UPDATE',
+      [id],
+    )
+    if (categoria.rowCount === 0) throw notFound('Categoría no encontrada')
+
+    const productos = await client.query(
+      'SELECT nombre FROM productos WHERE id_categoria = $1 ORDER BY nombre LIMIT 1',
+      [id],
+    )
+    if (productos.rowCount > 0) {
+      throw conflict(`La categoría tiene el producto "${productos.rows[0].nombre}"; muévelo a otra categoría antes de eliminarla`)
+    }
+
+    await client.query('DELETE FROM categorias WHERE id_categoria = $1', [id])
+    await client.query('COMMIT')
+    return { id }
+  } catch (error) {
+    await client.query('ROLLBACK')
+    if (error?.code === '23503') throw conflict('La categoría tiene productos asociados')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
 export async function listProducts(restaurantId, { availableOnly = false } = {}) {
   const id = normalizeUuid(restaurantId, 'Restaurant id')
   const result = await pool.query(
@@ -168,6 +234,54 @@ export async function deleteProduct(productId, restaurantId) {
   } catch (error) {
     if (error?.code === '23503') throw conflict('Product is used by orders')
     throw error
+  }
+}
+
+export async function eliminarProducto(productId, restaurantId) {
+  const id = normalizeUuid(productId, 'Id de producto')
+  const idRestaurant = normalizeUuid(restaurantId, 'Restaurant id')
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+    const producto = await client.query(
+      'SELECT id_producto FROM productos WHERE id_producto = $1 AND id_restaurante = $2 FOR UPDATE',
+      [id, idRestaurant],
+    )
+    if (producto.rowCount === 0) throw notFound('Producto no encontrado')
+
+    const historial = await client.query(
+      `SELECT p.estado, m.numero AS mesa
+       FROM detalles_pedido dp
+       JOIN pedidos p ON p.id_pedido = dp.id_pedido
+       JOIN mesas m ON m.id_mesa = p.id_mesa
+       WHERE dp.id_producto = $1 AND dp.id_restaurante = $2
+       ORDER BY p.creado_en DESC
+       LIMIT 1`,
+      [id, idRestaurant],
+    )
+
+    if (historial.rowCount > 0) {
+      const pedido = historial.rows[0]
+      const activo = !['cerrado', 'cancelado'].includes(pedido.estado)
+      const detalle = activo
+        ? `tiene una cuenta abierta en la mesa ${pedido.mesa}; ciérrala o cancélala antes de eliminarlo`
+        : 'tiene historial de pedidos y no se puede eliminar'
+      throw conflict(`El producto ${detalle}. Si solo quieres quitarlo del menú, desactívalo.`)
+    }
+
+    await client.query('DELETE FROM productos WHERE id_producto = $1 AND id_restaurante = $2', [
+      id,
+      idRestaurant,
+    ])
+    await client.query('COMMIT')
+    return { id }
+  } catch (error) {
+    await client.query('ROLLBACK')
+    if (error?.code === '23503') throw conflict('El producto está en uso')
+    throw error
+  } finally {
+    client.release()
   }
 }
 

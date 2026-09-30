@@ -9,6 +9,9 @@ import {
   eliminarTrabajador as eliminarTrabajadorAPI,
   actualizarTrabajador,
   getMenuCategorias,
+  crearCategoriaMenu,
+  actualizarCategoriaMenu,
+  eliminarCategoriaMenu,
   getMenuProductos,
   crearProductoMenu,
   actualizarProductoMenu,
@@ -38,6 +41,9 @@ const menuGestionAbierto = ref(false)
 const menuModalAbierto = ref(false)
 const menuCargando = ref(false)
 const menuError = ref('')
+const menuAccionError = ref('')
+const categoriaNombre = ref('')
+const categoriaEditandoId = ref(null)
 const menuProductos = ref([])
 const menuCategorias = ref([])
 const menuFiltroCategoria = ref('todas')
@@ -142,6 +148,7 @@ function abrirProductoNuevo() {
     available: true,
   }
   menuError.value = ''
+  menuAccionError.value = ''
   menuModalAbierto.value = true
 }
 
@@ -156,6 +163,7 @@ function abrirProductoEditar(producto) {
     available: Boolean(producto.disponible),
   }
   menuError.value = ''
+  menuAccionError.value = ''
   menuModalAbierto.value = true
 }
 
@@ -166,9 +174,10 @@ function cerrarProductoModal() {
 
 async function guardarProducto() {
   menuError.value = ''
+  menuAccionError.value = ''
   const precio = Number(productoForm.value.price)
   if (!productoForm.value.categoryId || !productoForm.value.name.trim() || !Number.isFinite(precio) || precio < 0) {
-    menuError.value = 'Completa la categoría, el nombre y un precio válido'
+    menuAccionError.value = 'Completa la categoría, el nombre y un precio válido'
     return
   }
 
@@ -190,17 +199,62 @@ async function guardarProducto() {
     cerrarProductoModal()
     await Promise.all([cargarMenuAdministracion(), datos.cargarDatos()])
   } catch (error) {
-    menuError.value = error.message || 'No se pudo guardar el producto'
+    menuAccionError.value = error.message || 'No se pudo guardar el producto'
   }
 }
 
 async function eliminarProducto(producto) {
   if (!confirm(`¿Eliminar "${producto.nombre}" del menú?`)) return
+  menuAccionError.value = ''
   try {
     await eliminarProductoMenu(producto.id)
     await Promise.all([cargarMenuAdministracion(), datos.cargarDatos()])
   } catch (error) {
-    menuError.value = error.message || 'No se pudo eliminar el producto'
+    menuAccionError.value = error.message || 'No se pudo eliminar el producto'
+  }
+}
+
+function empezarRenombreCategoria(categoria) {
+  categoriaEditandoId.value = categoria.id
+  categoriaNombre.value = categoria.nombre
+  menuAccionError.value = ''
+}
+
+function cancelarRenombreCategoria() {
+  categoriaEditandoId.value = null
+  categoriaNombre.value = ''
+}
+
+async function guardarCategoria() {
+  const nombre = categoriaNombre.value.trim()
+  menuAccionError.value = ''
+  if (!nombre) {
+    menuAccionError.value = 'Escribe el nombre de la categoría'
+    return
+  }
+
+  try {
+    if (categoriaEditandoId.value) {
+      await actualizarCategoriaMenu(categoriaEditandoId.value, nombre)
+    } else {
+      await crearCategoriaMenu(nombre)
+    }
+    cancelarRenombreCategoria()
+    await cargarMenuAdministracion()
+  } catch (error) {
+    menuAccionError.value = error.message || 'No se pudo guardar la categoría'
+  }
+}
+
+async function eliminarCategoria(categoria) {
+  if (!confirm(`¿Eliminar la categoría "${categoria.nombre}"?`)) return
+  menuAccionError.value = ''
+  try {
+    await eliminarCategoriaMenu(categoria.id)
+    if (menuFiltroCategoria.value === categoria.id) menuFiltroCategoria.value = 'todas'
+    await cargarMenuAdministracion()
+  } catch (error) {
+    menuAccionError.value = error.message || 'No se pudo eliminar la categoría'
   }
 }
 
@@ -390,7 +444,38 @@ async function eliminarTrabajador(id) {
           </div>
 
           <div v-if="menuGestionAbierto" class="mt-5 rounded-xl border border-cafe-900/10 bg-crema-50 p-4">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <form class="flex flex-col gap-2 sm:flex-row sm:items-center" @submit.prevent="guardarCategoria">
+              <label class="text-[11px] font-bold uppercase tracking-wide text-cafe-500">Categorías</label>
+              <input id="categoria-nueva" v-model="categoriaNombre" type="text" maxlength="60"
+                :placeholder="categoriaEditandoId ? 'Nuevo nombre de la categoría' : 'Nombre de la nueva categoría'"
+                class="flex-1 rounded-lg border border-cafe-900/10 bg-white px-3 py-2 text-sm text-cafe-800 outline-none focus:border-cafe-700" />
+              <div class="flex gap-2">
+                <button type="submit"
+                  class="rounded-lg bg-cafe-700 px-3 py-2 text-xs font-bold text-crema-50 shadow hover:bg-cafe-800 cursor-pointer">
+                  {{ categoriaEditandoId ? 'Guardar nombre' : '+ Agregar categoría' }}
+                </button>
+                <button v-if="categoriaEditandoId" type="button" @click="cancelarRenombreCategoria"
+                  class="rounded-lg border border-cafe-900/10 bg-white px-3 py-2 text-xs font-bold text-cafe-600 hover:bg-cafe-100 cursor-pointer">
+                  Cancelar
+                </button>
+              </div>
+            </form>
+
+            <ul v-if="menuCategorias.length" class="mt-3 flex flex-wrap gap-2">
+              <li v-for="categoria in menuCategorias" :key="categoria.id"
+                class="flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-bold text-cafe-700 ring-1 ring-cafe-900/10">
+                {{ categoria.nombre }}
+                <button type="button" @click="empezarRenombreCategoria(categoria)"
+                  class="text-cafe-500 hover:text-cafe-800 font-bold cursor-pointer">Renombrar</button>
+                <button type="button" @click="eliminarCategoria(categoria)"
+                  class="text-red-500 hover:text-red-700 font-bold cursor-pointer">Eliminar</button>
+              </li>
+            </ul>
+            <p v-else class="mt-3 text-xs text-cafe-500">
+              Todavía no hay categorías. Crea la primera para poder agregar productos al menú.
+            </p>
+
+            <div class="mt-4 flex flex-col gap-3 border-t border-cafe-900/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
               <div class="flex flex-wrap gap-2">
                 <button v-for="opcion in opcionesFiltroMenu" :key="opcion.id" type="button"
                   @click="menuFiltroCategoria = opcion.id"
@@ -404,6 +489,14 @@ async function eliminarTrabajador(id) {
                 + Agregar producto
               </button>
             </div>
+
+            <p v-if="menuAccionError" class="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+              {{ menuAccionError }}
+              <button type="button" @click="menuAccionError = ''"
+                class="ml-3 rounded bg-amber-100 px-2 py-1 text-xs font-bold hover:bg-amber-200 cursor-pointer">
+                Entendido
+              </button>
+            </p>
 
             <div v-if="menuCargando" class="flex items-center justify-center py-10">
               <div class="animate-spin rounded-full h-7 w-7 border-2 border-cafe-200 border-t-cafe-700"></div>
@@ -580,7 +673,7 @@ async function eliminarTrabajador(id) {
             </div>
           </div>
 
-          <p v-if="menuError" class="text-xs text-red-700">{{ menuError }}</p>
+            <p v-if="menuAccionError" class="text-xs text-red-700">{{ menuAccionError }}</p>
 
           <div class="flex justify-end gap-2 pt-2">
             <button type="button" @click="cerrarProductoModal"

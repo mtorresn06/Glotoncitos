@@ -5,6 +5,10 @@ import {
   updateProduct,
   getProduct,
   listCategories,
+  eliminarProducto,
+  crearCategoria,
+  actualizarCategoria,
+  eliminarCategoria,
 } from '../services/menu-service.js'
 import {
   listTables,
@@ -137,6 +141,21 @@ async function getOrderByIndex(orderId, restaurantId, index) {
 router.get('/categorias', authenticateToken, asyncRoute(async (_req, res) => {
   const categories = await listCategories()
   res.json(categories.map(formatCategoryItem))
+}))
+
+router.post('/categorias', authenticateToken, requireAdmin, asyncRoute(async (req, res) => {
+  const categoria = await crearCategoria({ nombre: req.body?.nombre })
+  res.status(201).json(formatCategoryItem(categoria))
+}))
+
+router.put('/categorias/:id', authenticateToken, requireAdmin, asyncRoute(async (req, res) => {
+  const categoria = await actualizarCategoria(req.params.id, { nombre: req.body?.nombre })
+  res.json(formatCategoryItem(categoria))
+}))
+
+router.delete('/categorias/:id', authenticateToken, requireAdmin, asyncRoute(async (req, res) => {
+  await eliminarCategoria(req.params.id)
+  res.json({ message: 'Categoría eliminada correctamente' })
 }))
 
 router.get('/productos', authenticateToken, asyncRoute(async (req, res) => {
@@ -535,15 +554,9 @@ router.get('/trabajadores', authenticateToken, requireAdmin, asyncRoute(async (r
   res.json(trabajadores)
 }))
 
-// NUEVO: Eliminar producto del menú
+// Eliminar producto del menú
 router.delete('/productos/:id', authenticateToken, requireAdmin, asyncRoute(async (req, res) => {
-  const result = await pool.query(
-    `DELETE FROM productos WHERE id_producto = $1 AND id_restaurante = $2 RETURNING id_producto`,
-    [req.params.id, req.auth.restaurantId]
-  )
-  if (result.rowCount === 0) {
-    throw new HttpError(404, 'NOT_FOUND', 'Producto no encontrado')
-  }
+  await eliminarProducto(req.params.id, req.auth.restaurantId)
   res.json({ message: 'Producto eliminado correctamente' })
 }))
 

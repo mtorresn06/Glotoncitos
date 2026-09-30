@@ -46,6 +46,26 @@ export function getMenuCategorias() {
   return request('/categorias')
 }
 
+export function crearCategoriaMenu(nombre) {
+  return request('/categorias', {
+    method: 'POST',
+    body: { nombre },
+  })
+}
+
+export function actualizarCategoriaMenu(id, nombre) {
+  return request(`/categorias/${id}`, {
+    method: 'PUT',
+    body: { nombre },
+  })
+}
+
+export function eliminarCategoriaMenu(id) {
+  return request(`/categorias/${id}`, {
+    method: 'DELETE',
+  })
+}
+
 export function crearProductoMenu(datos) {
   return request('/productos', {
     method: 'POST',

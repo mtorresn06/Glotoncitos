@@ -2,27 +2,6 @@ import 'dotenv/config'
 import bcrypt from 'bcryptjs'
 import { pool, closePool } from './pool.js'
 
-const BASE_CATEGORIES = [
-  { nombre: 'Platos principales', descripcion: 'Platos fuertes y especialidades de la casa' },
-  { nombre: 'Bebidas', descripcion: 'Bebidas frías, calientes y alcohólicas' },
-  { nombre: 'Postres', descripcion: 'Postres caseros y helados' },
-  { nombre: 'Adicionales', descripcion: 'Guarniciones, salsas y extras' },
-  { nombre: 'Otros', descripcion: 'Productos varios' },
-]
-
-const BASE_PRODUCTS = [
-  { nombre: 'Hamburguesa clásica', descripcion: 'Carne, lechuga, tomate, queso y papas fritas', precio: 25000, tipo: 'plato', categoria: 'Platos principales' },
-  { nombre: 'Pizza margarita', descripcion: 'Masa artesanal, tomate, mozzarella, albahaca', precio: 32000, tipo: 'plato', categoria: 'Platos principales' },
-  { nombre: 'Ensalada césar', descripcion: 'Lechuga, pollo, crutones, parmesano, aderezo césar', precio: 18000, tipo: 'plato', categoria: 'Platos principales' },
-  { nombre: 'Jugo de naranja natural', descripcion: 'Recién exprimido', precio: 6000, tipo: 'bebida', categoria: 'Bebidas' },
-  { nombre: 'Café americano', descripcion: 'Café de grano colombiano', precio: 5000, tipo: 'bebida', categoria: 'Bebidas' },
-  { nombre: 'Limonada', descripcion: 'Limón, agua, azúcar, hielo', precio: 5500, tipo: 'bebida', categoria: 'Bebidas' },
-  { nombre: 'Tiramisú', descripcion: 'Clásico italiano con café y mascarpone', precio: 12000, tipo: 'postre', categoria: 'Postres' },
-  { nombre: 'Flan de leche', descripcion: 'Flan casero con caramelo', precio: 8000, tipo: 'postre', categoria: 'Postres' },
-  { nombre: 'Papas fritas', descripcion: 'Porción de papas fritas crujientes', precio: 8000, tipo: 'adicional', categoria: 'Adicionales' },
-  { nombre: 'Arroz blanco', descripcion: 'Porción de arroz blanco', precio: 4000, tipo: 'adicional', categoria: 'Adicionales' },
-]
-
 const BASE_TABLES = [
   { numero: 1, capacidad: 2 },
   { numero: 2, capacidad: 2 },
@@ -173,33 +152,8 @@ async function seedRestaurant(client, restaurant, users) {
   )
   const adminId = adminResult.rows[0].id_usuario
 
-  await client.query(
-    `INSERT INTO categorias (nombre, descripcion)
-     SELECT unnest($1::text[]), unnest($2::text[])
-     ON CONFLICT (nombre) DO UPDATE SET descripcion = EXCLUDED.descripcion`,
-    [BASE_CATEGORIES.map(c => c.nombre), BASE_CATEGORIES.map(c => c.descripcion)],
-  )
-  const categoriesResult = await client.query(
-    'SELECT id_categoria, nombre FROM categorias ORDER BY nombre',
-  )
-  const categoriesByName = new Map(categoriesResult.rows.map(c => [c.nombre, c.id_categoria]))
-
-  for (const product of BASE_PRODUCTS) {
-    const categoryId = categoriesByName.get(product.categoria)
-    if (!categoryId) continue
-    await client.query(
-      `INSERT INTO productos (id_restaurante, id_categoria, nombre, descripcion, precio, tipo, disponible)
-       VALUES ($1, $2, $3, $4, $5, $6, true)
-       ON CONFLICT (id_restaurante, nombre) DO UPDATE SET
-         id_categoria = EXCLUDED.id_categoria,
-         descripcion = EXCLUDED.descripcion,
-         precio = EXCLUDED.precio,
-         tipo = EXCLUDED.tipo,
-         disponible = true,
-         actualizado_en = now()`,
-      [restaurantId, categoryId, product.nombre, product.descripcion, product.precio, product.tipo],
-    )
-  }
+  // El menu no se siembra a proposito: el administrador de cada restaurante
+  // crea sus propias categorias y productos desde el panel de administracion.
 
   const resultadoPiso = await client.query(
     `INSERT INTO pisos (id_restaurante, numero)
