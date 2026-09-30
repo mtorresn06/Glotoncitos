@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { login } from '../services/auth-service.js'
-import { normalizeGlotoncitosEmail, validatePassword } from '../utils/validation.js'
+import { normalizeGlotoncitosEmail } from '../utils/validation.js'
 
 const router = Router()
 
@@ -10,8 +10,8 @@ function asyncRoute(handler) {
 
 router.post('/login', asyncRoute(async (req, res) => {
   const email = normalizeGlotoncitosEmail(req.body?.email)
-  const password = validatePassword(req.body?.password)
-  const session = await login({ email, password })
+  // la longitud de la contrasena se valida dentro de login, luego de comparar el hash
+  const session = await login({ email, password: req.body?.password }, { ip: req.ip })
   res.json(session)
 }))
 

@@ -27,3 +27,7 @@ export function conflict(message, details) {
 export function badRequest(message, details) {
   return new HttpError(400, 'BAD_REQUEST', message, details)
 }
+
+export function tooManyRequests(message, details) {
+  return new HttpError(429, 'TOO_MANY_REQUESTS', message, details)
+}
