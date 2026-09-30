@@ -11,6 +11,7 @@
     "db:setup": "npm run db:migrate && npm run db:seed",
     "test": "node --test --experimental-test-module-mocks --test-concurrency=1 test/*.test.js",
     "test:unit": "node --test --experimental-test-module-mocks test/login.test.js",
+    "test:tiempos": "node --test --experimental-test-module-mocks test/tiempos-respuesta.test.js",
     "lint": "eslint src test"
   },
   "dependencies": {
